@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'cover_paintable'
 require_relative 'gst_player'
 require_relative 'repeat_mode_button'
 require_relative 'smooth_scale'
@@ -17,8 +18,8 @@ require_relative 'volume_button'
 # the middle, and the repeat and volume buttons on the right. The bar reveals
 # itself when there is something to play and hides again when the queue ends.
 #
-# The cover is a placeholder icon: upstream's CoverPaintable and the art
-# pipeline behind it are not ported yet.
+# The cover is a CoverPaintable, as upstream's is: it carries the playing
+# song and fills in that song's album art once the art pipeline has it.
 class PlayerToolbar < Gtk::ActionBar
   SIZE = Utils::ART_SIZES[:small]
 
@@ -124,9 +125,11 @@ class PlayerToolbar < Gtk::ActionBar
     end
   end
 
+  def cover_paintable = @cover_paintable ||= CoverPaintable.new(self, SIZE, :album)
+
   def cover_image
     @cover_image ||= Gtk::Image.new.tap do |image|
-      image.icon_name = Utils::DEFAULT_ICONS[:album]
+      image.paintable = cover_paintable
       image.set_size_request(SIZE.width, SIZE.height)
       image.pixel_size = SIZE.height
     end
@@ -331,6 +334,7 @@ class PlayerToolbar < Gtk::ActionBar
     end
 
     def show_song(coresong)
+      cover_paintable.coreobject = coresong
       duration_label.label = Utils.seconds_to_string(coresong.duration)
       progress_time_label.label = '0:00'
       play_button.sensitive = true

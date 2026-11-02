@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'album_art'
 require_relative 'core_disc'
 
 # CoreAlbum carries all the relevant information about an album.
@@ -65,10 +66,18 @@ class CoreAlbum < GLib::Object
     end
   end
 
-  # The album art uri, or "generic" while there is none. The art pipeline
-  # (albumart.py and friends) is not ported yet, so every album reports the
-  # generic cover.
-  def thumbnail = @thumbnail ||= 'generic'
+  # The album art uri, or "generic" while there is none. The first read
+  # starts the art lookup and reports the generic cover, exactly as
+  # upstream's thumbnail property does; the lookup sets the real uri when it
+  # finds one, which notifies every cover painting this album.
+  def thumbnail
+    if @thumbnail.nil?
+      @thumbnail = 'generic'
+      AlbumArt.new(self)
+    end
+
+    @thumbnail
+  end
 
   def thumbnail=(value)
     @thumbnail = value

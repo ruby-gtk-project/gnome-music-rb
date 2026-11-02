@@ -16,22 +16,26 @@ component is **the pair of files**, and both halves map to one `lib/*.rb`.
 
 ## Current state of the port
 
-Refreshed after the first porting pass (`Port the application shell, core
-models, album/artist/playlist/search views and the player`). `lib/` on `ruby`
-now holds **60 files**; the scaffold `lib/gnome_music.rb` requires
-`lib/main.rb`, which is the real `class App`, launched from `exe/gnome-music`.
+Refreshed after the second porting pass (`Port the cover-art pipeline and the
+suspend inhibitor`), which followed the first (`Port the application shell,
+core models, album/artist/playlist/search views and the player`). `lib/` on
+`ruby` now holds **67 files**; the scaffold `lib/gnome_music.rb` requires
+`lib/main.rb`, which is the real `class App`, launched from
+`exe/gnome-music`.
 
-**Component status: 45 of 47 user-facing components are present; 2 are
-missing.** Of the 25 supporting (non-widget) modules, 12 are present and 13
-are missing — all of them in the Grilo/Tracker, cover-art and session
-clusters.
+**Component status: 46 of 47 user-facing components are present; 1 is
+missing.** Of the 25 supporting (non-widget) modules, 17 are present and 8
+are missing — all of them in the Grilo/Tracker, remote-art and suspend
+clusters. The cover-art pipeline landed in the second porting pass, minus the
+two pieces that need absent dependencies: `embedded_art` (GStreamer's tag
+readers) and `store_art` (Grilo).
 
 | Status | Count | Which |
 |---|---:|---|
-| user-facing components present | 45 | every window, dialog, page, view, tile, row, menu, toast, header bar and playback control |
-| user-facing components missing | 2 | `lib/disc_list_item.rb`, `lib/cover_paintable.rb` |
-| supporting modules present | 12 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger` |
-| supporting modules missing | 13 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `album_art`, `artist_art`, `song_art`, `store_art`, `media_art_loader`, `embedded_art`, `texture_cache`, `inhibit_suspend`, `pause_on_suspend` |
+| user-facing components present | 46 | every window, dialog, page, view, tile, row, menu, toast, header bar and playback control, plus the cover paintable |
+| user-facing components missing | 1 | `lib/disc_list_item.rb` |
+| supporting modules present | 17 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger`, `album_art`, `artist_art`, `song_art`, `media_art_loader`, `texture_cache`, `inhibit_suspend` (and `media_art`, which stands in for libmediaart) |
+| supporting modules missing | 8 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `store_art`, `embedded_art`, `pause_on_suspend` |
 
 Totals upstream: 33 `.ui` files under `data/ui/`, 68 Python modules under
 `gnomemusic/`, 1 GSettings schema, 1 stylesheet, 19 SPARQL queries, 74 `po/`
@@ -430,8 +434,14 @@ Keys: `window-size` (`[768, 600]`), `window-maximized` (true), `repeat`
 mode), `SongStateIcon`, `View` (ALBUM/ARTIST/PLAYLIST), "Unknown Artist",
 duration formatting.
 
-### `gnomemusic/coverpaintable.py` → `lib/cover_paintable.rb` — paintable — **MISSING**
+### `gnomemusic/coverpaintable.py` → `lib/cover_paintable.rb` — paintable — **present**
 The rounded placeholder/cover art paintable every tile and the toolbar use.
+Registered as a `GLib::Object` that includes `Gdk::Paintable` — `type_register`
+has to come *before* the `include`, or the bindings leave the GType without
+the interface — with `virtual_do_snapshot` /
+`virtual_do_get_intrinsic_width` / `virtual_do_get_intrinsic_height`.
+`get_flags` is deliberately not implemented: the bindings cannot marshal a
+flags return value out of a Ruby virtual function.
 
 ### `gnomemusic/grilowrappers/smartplaylist.py` → `lib/smart_playlists.rb` — data + user-facing titles — **present**
 Seven smart playlists shown in the playlists sidebar: "Most Played", "Never
@@ -443,7 +453,7 @@ Played", "Recently Played", "Recently Added", "Starred Songs",
 # Supporting (non-widget) upstream modules
 
 Not components, but the port needs equivalents before any view has data.
-12 of these exist on `ruby`; 13 do not. The `Present` column is authoritative.
+17 of these exist on `ruby`; 8 do not. The `Present` column is authoritative.
 
 | Upstream | Suggested `lib/*.rb` | Role | Present |
 |---|---|---|---|
@@ -462,8 +472,11 @@ Not components, but the port needs equivalents before any view has data.
 | `gnomemusic/gstplayer.py` | `lib/gst_player.rb` | GStreamer playbin, `Playback` enum | yes |
 | `gnomemusic/shufflelistmodel.py` | `lib/shuffle_list_model.rb` | shuffle model | yes |
 | `gnomemusic/mpris.py` | `lib/mpris.rb` | MPRIS2 D-Bus interface | **no** |
-| `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `storeart.py`, `mediaartloader.py`, `embeddedart.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/store_art.rb`, `lib/media_art_loader.rb`, `lib/embedded_art.rb`, `lib/texture_cache.rb` | cover-art pipeline | **no** (all 7) |
-| `gnomemusic/inhibitsuspend.py`, `pauseonsuspend.py` | `lib/inhibit_suspend.rb`, `lib/pause_on_suspend.rb` | session/power integration | **no** (both) |
+| `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `mediaartloader.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/media_art_loader.rb`, `lib/texture_cache.rb` | cover-art pipeline | yes (all 5) |
+| (libmediaart, `MediaArt` 2.0 GIR) | `lib/media_art.rb` | the MediaArt cache path and the directory cover lookup that fills it, per the Media Art Storage Spec; no MediaArt typelib in the dev shell | yes |
+| `gnomemusic/storeart.py`, `embeddedart.py` | `lib/store_art.rb`, `lib/embedded_art.rb` | remote store art (needs Grilo); embedded art (needs `GstTag`/`GstPbutils`/`MediaArt`) | **no** (both) |
+| `gnomemusic/inhibitsuspend.py` | `lib/inhibit_suspend.rb` | suspend inhibitor while playing | yes |
+| `gnomemusic/pauseonsuspend.py` | `lib/pause_on_suspend.rb` | logind `PrepareForSleep` delay lock | **no** |
 | `gnomemusic/musiclogger.py`, `asynciolimiter.py` | `lib/music_logger.rb`, (drop) | logging; the asyncio limiter is Python-specific plumbing | `music_logger` yes |
 | `data/queries/*.rq` (19 files) | `lib/queries/` or inline | SPARQL used by the localsearch wrapper | n/a |
 | `po/` (74 catalogues), `help/C/*.page` (10 pages) | translation / help parity steps | out of scope for this survey | n/a |
@@ -474,12 +487,13 @@ Not components, but the port needs equivalents before any view has data.
 
 1. **Upstream ref name.** The brief says `origin/main`; the only upstream ref
    in this clone is `origin/master`. Every later step must use `master`.
-2. **Two user-facing components still missing.** `lib/disc_list_item.rb`
-   (`data/ui/DiscListItem.ui`, the `Gtk.ListItem` template binding
-   `CoreDisc.disc_nr` + `CoreDisc.model` into a `DiscBox`) and
-   `lib/cover_paintable.rb` (`gnomemusic/coverpaintable.py`, the rounded
-   placeholder/cover paintable every tile and the toolbar draw). Everything
-   else user-facing exists.
+2. **One user-facing component still missing**, and it is dead code upstream.
+   `data/ui/DiscListItem.ui` is a `Gtk.ListItem` template binding
+   `CoreDisc.disc_nr` + `CoreDisc.model` into a `DiscBox`, but no upstream
+   `.py` or `.ui` file references it — `AlbumWidget` builds its discs with a
+   `GtkListBox` and a header func, which the port already does. Porting it
+   means adding a class nothing can reach, so it is deliberately left for a
+   decision rather than written.
 3. **No data source exists for Ruby.** Upstream reads its collection through
    **Grilo + localsearch/Tracker SPARQL** and plays through **GStreamer**.
    Neither Grilo nor Tracker has usable Ruby bindings in the fork's dev shell,

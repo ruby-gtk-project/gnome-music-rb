@@ -2,6 +2,7 @@
 
 require 'adwaita'
 require_relative 'core_artist'
+require_relative 'cover_paintable'
 require_relative 'utils'
 
 # ArtistTile is one artist in the artists view sidebar.
@@ -10,8 +11,8 @@ require_relative 'utils'
 # data/ui/ArtistTile.ui: the artist image and name, with a click gesture so
 # the sidebar activates the row the tile belongs to.
 #
-# The image is a placeholder icon: upstream's CoverPaintable and the art
-# pipeline behind it are not ported yet.
+# The image is a CoverPaintable, as upstream's is: a round placeholder until
+# the art pipeline has found a picture of the artist.
 class ArtistTile < Gtk::Box
   SIZE = Utils::ART_SIZES[:xsmall]
 
@@ -46,6 +47,7 @@ class ArtistTile < Gtk::Box
   def coreartist=(coreartist)
     @coreartist = coreartist
     self.text = coreartist.artist.to_s
+    cover_paintable.coreobject = coreartist
   end
 
   def text = label.label
@@ -57,9 +59,11 @@ class ArtistTile < Gtk::Box
     end
   end
 
+  def cover_paintable = @cover_paintable ||= CoverPaintable.new(self, SIZE, :artist)
+
   def cover_image
     @cover_image ||= Gtk::Image.new.tap do |image|
-      image.icon_name = Utils::DEFAULT_ICONS[:artist]
+      image.paintable = cover_paintable
       image.set_size_request(SIZE.width, SIZE.height)
       image.pixel_size = SIZE.height
       image.halign = :center

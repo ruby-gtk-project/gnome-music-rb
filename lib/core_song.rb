@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'song_art'
 require_relative 'utils'
 
 # CoreSong carries everything the app knows about one song.
@@ -124,10 +125,17 @@ class CoreSong < GLib::Object
     notify_property(:play_count)
   end
 
-  # The album art uri, or "generic" while there is none. Upstream kicks off an
-  # AlbumArt lookup on first read; the art pipeline (albumart.py and friends)
-  # is not ported yet, so every song reports the generic cover.
-  def thumbnail = @thumbnail ||= 'generic'
+  # The album art uri, or "generic" while there is none. The first read
+  # starts the art lookup and reports the generic cover, as upstream's
+  # thumbnail property does.
+  def thumbnail
+    if @thumbnail.nil?
+      @thumbnail = 'generic'
+      SongArt.new(self)
+    end
+
+    @thumbnail
+  end
 
   def thumbnail=(value)
     @thumbnail = value

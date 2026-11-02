@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'cover_paintable'
 require_relative 'two_line_tip'
 require_relative 'utils'
 
@@ -10,8 +11,8 @@ require_relative 'utils'
 # A direct port of upstream's gnomemusic/widgets/artistsearchtile.py and
 # data/ui/ArtistSearchTile.ui.
 #
-# The image is a placeholder icon: upstream's CoverPaintable and the art
-# pipeline behind it are not ported yet.
+# The image is a CoverPaintable, as upstream's is: a round placeholder until
+# the art pipeline has found a picture of the artist.
 class ArtistSearchTile < Gtk::FlowBoxChild
   SIZE = Utils::ART_SIZES[:medium]
 
@@ -39,6 +40,7 @@ class ArtistSearchTile < Gtk::FlowBoxChild
       end
 
       artist_label.label = @coreartist.artist.to_s
+      cover_paintable.coreobject = @coreartist
 
       two_line_tip.tap do |tip|
         tip.title = @coreartist.artist.to_s
@@ -54,9 +56,11 @@ class ArtistSearchTile < Gtk::FlowBoxChild
     end
   end
 
+  def cover_paintable = @cover_paintable ||= CoverPaintable.new(self, SIZE, :artist)
+
   def cover_image
     @cover_image ||= Gtk::Image.new.tap do |image|
-      image.icon_name = Utils::DEFAULT_ICONS[:artist]
+      image.paintable = cover_paintable
       image.set_size_request(SIZE.width, SIZE.height)
       image.pixel_size = SIZE.height
       image.hexpand = true

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'artist_art'
 require_relative 'core_album'
 
 # CoreArtist carries all the relevant information about an artist.
@@ -39,10 +40,17 @@ class CoreArtist < GLib::Object
     end
   end
 
-  # The artist art uri, or "generic" while there is none. The art pipeline
-  # (artistart.py and friends) is not ported yet, so every artist reports the
-  # generic image.
-  def thumbnail = @thumbnail ||= 'generic'
+  # The artist art uri, or "generic" while there is none. The first read
+  # starts the art lookup and reports the generic image, as upstream's
+  # thumbnail property does.
+  def thumbnail
+    if @thumbnail.nil?
+      @thumbnail = 'generic'
+      ArtistArt.new(self)
+    end
+
+    @thumbnail
+  end
 
   def thumbnail=(value)
     @thumbnail = value

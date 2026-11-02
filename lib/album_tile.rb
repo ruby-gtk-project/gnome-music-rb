@@ -2,6 +2,7 @@
 
 require 'adwaita'
 require_relative 'core_album'
+require_relative 'cover_paintable'
 require_relative 'utils'
 
 # AlbumTile is the cover, album title and artist name shown in the albums
@@ -10,11 +11,9 @@ require_relative 'utils'
 # Ported from upstream's gnomemusic/widgets/albumtile.py and
 # data/ui/AlbumTile.ui.
 #
-# Upstream draws the cover with a CoverPaintable, which fills in the artwork
-# once the art pipeline has fetched it and falls back to a placeholder icon
-# until then. The art pipeline (coverpaintable.py, albumart.py and friends) is
-# not ported yet, so the image shows that same placeholder icon at the same
-# size.
+# The cover is a CoverPaintable, as upstream's is: it shows the placeholder
+# icon until the art pipeline has found the album's artwork and fills itself
+# in when it has.
 class AlbumTile < Gtk::Box
   SIZE = Utils::ART_SIZES[:medium]
 
@@ -48,11 +47,15 @@ class AlbumTile < Gtk::Box
       label.label = corealbum.artist.to_s
       label.tooltip_text = corealbum.artist.to_s
     end
+
+    cover_paintable.coreobject = corealbum
   end
+
+  def cover_paintable = @cover_paintable ||= CoverPaintable.new(self, SIZE, :album)
 
   def cover_image
     @cover_image ||= Gtk::Image.new.tap do |image|
-      image.icon_name = Utils::DEFAULT_ICONS[:album]
+      image.paintable = cover_paintable
       image.set_size_request(SIZE.width, SIZE.height)
       image.pixel_size = SIZE.height
       image.vexpand = true

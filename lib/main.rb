@@ -9,6 +9,7 @@ require_relative 'search'
 require_relative 'style'
 require_relative 'notification_manager'
 require_relative 'core_model'
+require_relative 'inhibit_suspend'
 require_relative 'local_search_playlists'
 require_relative 'player'
 require_relative 'about_dialog'
@@ -27,11 +28,11 @@ require_relative 'gnome/music/rb/version'
 # Upstream subclasses Adw.Application; the Ruby bindings cannot, so the
 # application object is a Gtk::Application and only the window is Adwaita.
 #
-# Three of upstream's startup pieces are not here, because the components
+# Two of upstream's startup pieces are not here, because the components
 # behind them are not ported yet: CoreGrilo, which is what fills the
-# collection from Tracker, MPRIS, and the suspend inhibitor. Until the data
-# source lands the collection is empty, which is the state upstream shows the
-# welcome page for.
+# collection from Tracker, and MPRIS. Until the data source lands the
+# collection is empty, which is the state upstream shows the welcome page
+# for.
 class App
   APP_ID = 'org.rubygtkproject.GnomeMusic'
   VERSION = Gnome::Music::Rb::VERSION
@@ -56,7 +57,7 @@ class App
     'volume_increase' => ['<Ctrl>plus', '<Ctrl>equal', '<Ctrl>KP_Add'],
   }.freeze
 
-  attr_reader :log, :search, :settings, :coremodel, :notificationmanager, :playlists
+  attr_reader :log, :search, :settings, :coremodel, :notificationmanager, :playlists, :inhibit_suspend
 
   # app_id/flags are injectable so a test can register a throwaway
   # application rather than the session's real one, and present: false builds
@@ -72,6 +73,7 @@ class App
     @notificationmanager = NotificationManager.new
     @playlists = LocalSearchPlaylists.new(collection: @coremodel)
     @window = nil
+    @inhibit_suspend = nil
   end
 
   def app
@@ -107,6 +109,7 @@ class App
         load_playlists
         @window = Window.new(self).build
         @notificationmanager.window = @window
+        @inhibit_suspend = InhibitSuspend.new(self)
       end
 
       if @present

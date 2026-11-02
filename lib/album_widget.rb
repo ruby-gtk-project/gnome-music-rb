@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'cover_paintable'
 require_relative 'disc_box'
 require_relative 'playlist_dialog'
 require_relative 'utils'
@@ -14,8 +15,8 @@ require_relative 'utils'
 # release line. The disc headers above each disc are only shown when the
 # album has more than one disc, as upstream does.
 #
-# The cover is a placeholder icon: upstream's CoverPaintable and the art
-# pipeline behind it are not ported yet.
+# The cover is a CoverPaintable, as upstream's is: it shows the placeholder
+# icon until the art pipeline has found the album's artwork.
 class AlbumWidget < Adwaita::Bin
   SIZE = Utils::ART_SIZES[:large]
 
@@ -88,6 +89,7 @@ class AlbumWidget < Adwaita::Bin
       label.tooltip_text = corealbum.artist.to_s
     end
 
+    cover_paintable.coreobject = corealbum
     set_composer_label
     update_release_info
     bind_discs
@@ -130,9 +132,11 @@ class AlbumWidget < Adwaita::Bin
     end
   end
 
+  def cover_paintable = @cover_paintable ||= CoverPaintable.new(self, SIZE, :album)
+
   def cover_image
     @cover_image ||= Gtk::Image.new.tap do |image|
-      image.icon_name = Utils::DEFAULT_ICONS[:album]
+      image.paintable = cover_paintable
       image.set_size_request(SIZE.width, SIZE.height)
       image.pixel_size = SIZE.height
       image.halign = :center
