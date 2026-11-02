@@ -1,0 +1,11 @@
+[Icon Theme]
+Name=hicolor
+Comment=Icons shipped with the Ruby port of GNOME Music
+Directories=scalable/apps
+
+[scalable/apps]
+Size=16
+MinSize=8
+MaxSize=512
+Context=Applications
+Type=Scalable
