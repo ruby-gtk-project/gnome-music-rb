@@ -8,7 +8,7 @@ GTK4 + libadwaita)** read from `origin/master` in this repo.
 > (`git show origin/master:<path>`, `git ls-tree -r --name-only origin/master`).
 > Everything below was read from `origin/master`.
 
-Upstream is a GtkBuilder app: **31 `.ui` files under `data/ui/`** carry the
+Upstream is a GtkBuilder app: **33 `.ui` files under `data/ui/`** carry the
 widget trees, CSS classes and signal handler names, and the matching
 `gnomemusic/**/*.py` class carries the `Gtk.Template.Child`s, the action
 groups and the callbacks. Per the `component-identification` skill, the
@@ -16,26 +16,34 @@ component is **the pair of files**, and both halves map to one `lib/*.rb`.
 
 ## Current state of the port
 
-`lib/` on `ruby` holds the untouched fork scaffold only:
+Refreshed after the first porting pass (`Port the application shell, core
+models, album/artist/playlist/search views and the player`). `lib/` on `ruby`
+now holds **60 files**; the scaffold `lib/gnome_music.rb` requires
+`lib/main.rb`, which is the real `class App`, launched from `exe/gnome-music`.
 
-| File | What it is |
-|---|---|
-| `lib/gnome_music.rb` | requires `gnome_music/application` |
-| `lib/gnome_music/application.rb` | scaffold: one `Adwaita::ApplicationWindow`, one `Adwaita::StatusPage` reading "The Ruby port has not been written yet." |
-| `lib/gnome/music/rb/version.rb` | gem version |
+**Component status: 45 of 47 user-facing components are present; 2 are
+missing.** Of the 25 supporting (non-widget) modules, 12 are present and 13
+are missing — all of them in the Grilo/Tracker, cover-art and session
+clusters.
 
-**No upstream component has been ported.** Every row in the tables below is
-`present: no`. Totals: 31 `.ui` files, 40 Python modules under
-`gnomemusic/` (26 of them widgets/views), 1 GSettings schema, 1 stylesheet,
-19 SPARQL queries, 74 `po/` catalogues.
+| Status | Count | Which |
+|---|---:|---|
+| user-facing components present | 45 | every window, dialog, page, view, tile, row, menu, toast, header bar and playback control |
+| user-facing components missing | 2 | `lib/disc_list_item.rb`, `lib/cover_paintable.rb` |
+| supporting modules present | 12 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger` |
+| supporting modules missing | 13 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `album_art`, `artist_art`, `song_art`, `store_art`, `media_art_loader`, `embedded_art`, `texture_cache`, `inhibit_suspend`, `pause_on_suspend` |
+
+Totals upstream: 33 `.ui` files under `data/ui/`, 68 Python modules under
+`gnomemusic/`, 1 GSettings schema, 1 stylesheet, 19 SPARQL queries, 74 `po/`
+catalogues.
 
 House shape follows the pilot at `gnome-contacts-rb`: flat `lib/<thing>.rb`,
 one class per file, `# frozen_string_literal: true` then `require 'adwaita'`
 and `require_relative` siblings, a comment naming the upstream file, widgets
-as memoized accessors configured in `.tap`. The pilot keeps its scaffold
-(`lib/gnome_contacts/application.rb`) untouched and puts the real app in
-`lib/main.rb` (`class App`), launched from `exe/`; this port should do the
-same.
+as memoized accessors configured in `.tap`.
+
+Per-component `present` is marked inline below as **present** / **MISSING**
+on each heading.
 
 ---
 
@@ -43,7 +51,7 @@ same.
 
 ## 1. Application, global actions and the dialogs it opens
 
-### `gnomemusic/application.py` → `lib/main.rb` (`class App`) — application
+### `gnomemusic/application.py` → `lib/main.rb` (`class App`) — application — **present**
 `Adw.Application` subclass. Not a widget, but it owns every global action and
 accelerator, so it is its own unit.
 
@@ -53,13 +61,13 @@ accelerator, so it is its own unit.
 | Behaviour | `do_startup` forces `Adw.ColorScheme.PREFER_LIGHT`; `do_activate` builds `Window`, registers MPRIS, adds the `devel` CSS class when the app id is `org.gnome.Music.Devel` |
 | Notes | `Adwaita::Application` is broken in the Ruby bindings — actions and accels go on `Gtk::Application` (see `ruby-gtk` skill) |
 
-### `gnomemusic/about.py` → `lib/about_dialog.rb` — dialog
+### `gnomemusic/about.py` → `lib/about_dialog.rb` — dialog — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
 | `Adw.AboutDialog` | 1 | — | — | application name "Music", icon = app id, developer name "The GNOME Project", ~125 developers, 3 designers, `translator-credits`, website `apps.gnome.org/Music/`, issue url, `© The GNOME Music Developers`, GPL-2.0 |
 
-### `data/ui/shortcuts-dialog.ui` → `lib/shortcuts_dialog.rb` — dialog
+### `data/ui/shortcuts-dialog.ui` → `lib/shortcuts_dialog.rb` — dialog — **present**
 Standalone builder object (`AdwShortcutsDialog id="shortcuts_dialog"`), no
 backing Python file — its own unit.
 
@@ -73,7 +81,7 @@ backing Python file — its own unit.
 > `application.py` never installs — upstream relies on GTK's built-in
 > shortcuts action. The port must install it explicitly.
 
-### `gnomemusic/widgets/preferencesdialog.py` + `data/ui/PreferencesDialog.ui` → `lib/preferences_dialog.rb` — dialog
+### `gnomemusic/widgets/preferencesdialog.py` + `data/ui/PreferencesDialog.ui` → `lib/preferences_dialog.rb` — dialog — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -84,13 +92,13 @@ backing Python file — its own unit.
 | `Gtk.StringList` | 2 | — | — | the two models above |
 | `Adw.SwitchRow` | 1 | — | — | "Inhibit Suspend" / "Only while playing" → `settings.inhibit-suspend` |
 
-### `gnomemusic/windowplacement.py` → `lib/window_placement.rb` — support
+### `gnomemusic/windowplacement.py` → `lib/window_placement.rb` — support — **present**
 Restores and saves `window-size` / `window-maximized`; connects
 `notify::maximized`, `notify::default-height`, `notify::default-width`.
 
 ## 2. The main window
 
-### `gnomemusic/window.py` + `data/ui/Window.ui` → `lib/window.rb` — window
+### `gnomemusic/window.py` + `data/ui/Window.ui` → `lib/window.rb` — window — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -109,7 +117,7 @@ Restores and saves `window-size` / `window-maximized`; connects
 | Repeaters | the three main views, created lazily in `_switch_to_player_view` once songs are available |
 | Conditional | `status` page when no songs / Tracker unavailable / Tracker outdated; `searchview` when search mode is active |
 
-### `gnomemusic/widgets/headerbar.py` + `data/ui/HeaderBar.ui` → `lib/header_bar.rb` — header bar + primary menu
+### `gnomemusic/widgets/headerbar.py` + `data/ui/HeaderBar.ui` → `lib/header_bar.rb` — header bar + primary menu — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -121,7 +129,7 @@ Restores and saves `window-size` / `window-maximized`; connects
 | Menu `_primary_menu` | 4 items | | | Preferences (`app.preferences`), Keyboard Shortcuts (`app.shortcuts`), Help (`app.help`), About Music (`app.about`) |
 | States | `MAIN`, `CHILD`, `SEARCH`, `EMPTY` — each changes title widget, menu-button and search-button visibility |
 
-### `gnomemusic/widgets/searchheaderbar.py` + `data/ui/SearchHeaderBar.ui` → `lib/search_header_bar.rb` — header bar
+### `gnomemusic/widgets/searchheaderbar.py` + `data/ui/SearchHeaderBar.ui` → `lib/search_header_bar.rb` — header bar — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -130,7 +138,7 @@ Restores and saves `window-size` / `window-maximized`; connects
 | `Gtk.SearchEntry` | 1 | `error` (dynamic, on NO_RESULT) | `search-changed` → `_search_entry_changed` | built in code: placeholder "Search songs, artists and albums", width 500, `search_delay` 250, halign center |
 | `Gtk.ShortcutController` | 1 (controller) | — | — | Escape → `action(win.search_bar_close)` |
 
-### `gnomemusic/widgets/statusnavigationpage.py` + `data/ui/StatusNavigationPage.ui` → `lib/status_navigation_page.rb` — empty/error page
+### `gnomemusic/widgets/statusnavigationpage.py` + `data/ui/StatusNavigationPage.ui` → `lib/status_navigation_page.rb` — empty/error page — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -144,7 +152,7 @@ Restores and saves `window-size` / `window-maximized`; connects
 
 ## 3. Albums
 
-### `gnomemusic/views/albumsview.py` + `data/ui/AlbumsView.ui` → `lib/albums_view.rb` — page
+### `gnomemusic/views/albumsview.py` + `data/ui/AlbumsView.ui` → `lib/albums_view.rb` — page — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -153,10 +161,10 @@ Restores and saves `window-size` / `window-maximized`; connects
 | `Gtk.GridView` | 1 | styled via `#albums gridview`, `#albums gridview > child`, `:hover/:selected` | `activate` → `_on_album_activated` | max 10 columns, single-click-activate |
 | `Gtk.SignalListItemFactory` | 1 | — | `setup`, `bind` | builds one `AlbumCover` per album — **repeater**, N = albums |
 
-### `gnomemusic/widgets/albumcover.py` + `data/ui/AlbumCover.ui` → `lib/album_cover.rb` — tile wrapper
+### `gnomemusic/widgets/albumcover.py` + `data/ui/AlbumCover.ui` → `lib/album_cover.rb` — tile wrapper — **present**
 `Gtk.FlowBoxChild`, CSS `tile` (`.tile:hover` in the stylesheet). Holds an `AlbumTile`.
 
-### `gnomemusic/widgets/albumtile.py` + `data/ui/AlbumTile.ui` → `lib/album_tile.rb` — tile
+### `gnomemusic/widgets/albumtile.py` + `data/ui/AlbumTile.ui` → `lib/album_tile.rb` — tile — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -164,10 +172,10 @@ Restores and saves `window-size` / `window-maximized`; connects
 | `Gtk.Image` | 1 | `tile-image` | — | cover art |
 | `Gtk.Label` | 2 | — / `artist-label` + `dim-label` | — | album title (wrap, ellipsize middle, 20 chars, 1 line), artist |
 
-### `gnomemusic/widgets/albumnavigationpage.py` + `data/ui/AlbumNavigationPage.ui` → `lib/album_navigation_page.rb` — page
+### `gnomemusic/widgets/albumnavigationpage.py` + `data/ui/AlbumNavigationPage.ui` → `lib/album_navigation_page.rb` — page — **present**
 `Adw.NavigationPage` → `Adw.ToolbarView` → `Adw.HeaderBar` with `Adw.WindowTitle` (`_page_title`), content a `Gtk.ScrolledWindow` (hscrollbar never) holding an `AlbumWidget`.
 
-### `gnomemusic/widgets/albumwidget.py` + `data/ui/AlbumWidget.ui` → `lib/album_widget.rb` — album detail
+### `gnomemusic/widgets/albumwidget.py` + `data/ui/AlbumWidget.ui` → `lib/album_widget.rb` — album detail — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -183,17 +191,17 @@ Restores and saves `window-size` / `window-maximized`; connects
 | Actions (`album.`) | 3 | | | `play`, `add_favorites`, `add_playlist` |
 | Menu `album_menu` | 3 items | | | `_Play` → `album.play`, `Add to _Favorite Songs` → `album.add_favorites`, `_Add to Playlist…` → `album.add_playlist` |
 
-### `gnomemusic/widgets/discbox.py` + `data/ui/DiscBox.ui` → `lib/disc_box.rb` — row
+### `gnomemusic/widgets/discbox.py` + `data/ui/DiscBox.ui` → `lib/disc_box.rb` — row — **present**
 `Gtk.ListBoxRow` (not focusable/activatable/selectable) holding a `Gtk.ListBox`
 with CSS `boxed-list`, selection none, `row-activated` → `_song_activated`;
 one `SongWidget` per song (**repeater**).
 
-### `data/ui/DiscListItem.ui` → `lib/disc_list_item.rb` — list item template
+### `data/ui/DiscListItem.ui` → `lib/disc_list_item.rb` — list item template — **MISSING**
 `Gtk.ListItem` template with no backing Python file (own unit): a vertical
 `Gtk.Box`, a `Gtk.Label` bound to `CoreDisc.disc_nr`, and a `DiscBox` bound to
 `CoreDisc.model`.
 
-### `gnomemusic/widgets/songwidget.py` + `data/ui/SongWidget.ui` → `lib/song_widget.rb` — song row
+### `gnomemusic/widgets/songwidget.py` + `data/ui/SongWidget.ui` → `lib/song_widget.rb` — song row — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -208,7 +216,7 @@ one `SongWidget` per song (**repeater**).
 | `Gtk.SizeGroup` | 1 (type) | — | — | horizontal, over title/artist/album-duration boxes |
 | States | `State` enum drives the play icon and title styling (playing / played / unplayed) |
 
-### `gnomemusic/widgets/songwidgetmenu.py` + `data/ui/SongWidgetMenu.ui` → `lib/song_widget_menu.rb` — menu
+### `gnomemusic/widgets/songwidgetmenu.py` + `data/ui/SongWidgetMenu.ui` → `lib/song_widget_menu.rb` — menu — **present**
 
 | Facet | Detail |
 |---|---|
@@ -216,7 +224,7 @@ one `SongWidget` per song (**repeater**).
 | Menu items | `_Play` → `songwidget.play`, `_Add to Playlist…` → `songwidget.add_playlist`, `_Remove from Playlist` → `songwidget.remove_playlist`, plus `_Open Location` → `songwidget.open_location` built in code |
 | Actions (`songwidget.`) | `play`, `add_playlist`, `open_location`, and `remove_playlist` **only** for a non-smart playlist; for a non-playlist context menu item index 2 is removed — **conditional** |
 
-### `gnomemusic/widgets/startoggle.py` → `lib/star_toggle.rb` — button (no `.ui`)
+### `gnomemusic/widgets/startoggle.py` → `lib/star_toggle.rb` — button (no `.ui`) — **present**
 `Gtk.ToggleButton`, CSS `star` + `flat` + `circular`, gains `starred` when
 active and `interacted` on click (drives the `rotate_star`/`rotate_unstar`
 keyframes in `style.css`). Icon `starred-symbolic`/`non-starred-symbolic`,
@@ -224,7 +232,7 @@ tooltip "Unstar"/"Star". Signals `toggled`, `clicked`.
 
 ## 4. Artists
 
-### `gnomemusic/views/artistsview.py` + `data/ui/ArtistsView.ui` → `lib/artists_view.rb` — page
+### `gnomemusic/views/artistsview.py` + `data/ui/ArtistsView.ui` → `lib/artists_view.rb` — page — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -234,23 +242,23 @@ tooltip "Unstar"/"Star". Signals `toggled`, `clicked`.
 | `Gtk.ListView` | 1 | `navigation-sidebar` | `activate` → `_on_artist_activated` | |
 | `Gtk.SignalListItemFactory` | 1 | — | `setup`, `bind` | one `ArtistTile` per artist, each wired to `clicked` — **repeater** |
 
-### `gnomemusic/widgets/artisttile.py` + `data/ui/ArtistTile.ui` → `lib/artist_tile.rb` — sidebar row
+### `gnomemusic/widgets/artisttile.py` + `data/ui/ArtistTile.ui` → `lib/artist_tile.rb` — sidebar row — **present**
 `Gtk.Box` → inner `Gtk.Box` with `Gtk.Image` (cover) and `Gtk.Label`
 (ellipsize end, 16/10px margins). A `Gtk.GestureClick` (controller) is added in
 code, `pressed` → `_on_button_pressed`; emits `clicked`.
 
-### `gnomemusic/widgets/artistnavigationpage.py` + `data/ui/ArtistNavigationPage.ui` → `lib/artist_navigation_page.rb` — page
+### `gnomemusic/widgets/artistnavigationpage.py` + `data/ui/ArtistNavigationPage.ui` → `lib/artist_navigation_page.rb` — page — **present**
 `Adw.NavigationPage` title "Artist" → `Adw.ToolbarView` → `Adw.HeaderBar` +
 `Gtk.ScrolledWindow` (hscrollbar never) holding an `ArtistAlbumsWidget`.
 
-### `gnomemusic/widgets/artistalbumswidget.py` + `data/ui/ArtistAlbumsWidget.ui` → `lib/artist_albums_widget.rb`
+### `gnomemusic/widgets/artistalbumswidget.py` + `data/ui/ArtistAlbumsWidget.ui` → `lib/artist_albums_widget.rb` — **present**
 `Gtk.Box` (vertical) → `Adw.Clamp` (max 1000) → `Gtk.ListBox` CSS `background`;
 one `Gtk.ListBoxRow` holding an `AlbumWidget` per album, built in code —
 **repeater**.
 
 ## 5. Playlists
 
-### `gnomemusic/views/playlistsview.py` + `data/ui/PlaylistsView.ui` → `lib/playlists_view.rb` — page
+### `gnomemusic/views/playlistsview.py` + `data/ui/PlaylistsView.ui` → `lib/playlists_view.rb` — page — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -261,18 +269,18 @@ one `Gtk.ListBoxRow` holding an `AlbumWidget` per album, built in code —
 | `Adw.Bin` | 1 | — | — | `_playlist_page`, hosts `PlaylistsWidget` |
 | `PlaylistTile` | N | — | — | one per playlist — **repeater** |
 
-### `gnomemusic/widgets/playlisttile.py` + `data/ui/PlaylistTile.ui` → `lib/playlist_tile.rb` — row
+### `gnomemusic/widgets/playlisttile.py` + `data/ui/PlaylistTile.ui` → `lib/playlist_tile.rb` — row — **present**
 `Gtk.ListBoxRow` → `Gtk.Box` with `Gtk.Image` CSS `playlist-icon` (icon varies
 by smart-playlist kind) and `Gtk.Label` (ellipsize end, 16/10px margins).
 
-### `gnomemusic/widgets/playlistswidget.py` + `data/ui/PlaylistsWidget.ui` → `lib/playlists_widget.rb`
+### `gnomemusic/widgets/playlistswidget.py` + `data/ui/PlaylistsWidget.ui` → `lib/playlists_widget.rb` — **present**
 `Gtk.Box` (vertical) → `Adw.Clamp` (1000) with `PlaylistControls`, then
 `Gtk.ScrolledWindow` → `Adw.Clamp` (1000) → `Gtk.ListBox` CSS `boxed-list`,
 `row-activated` → `_on_song_activated`. Installs `win.playlist_play`; connects
 `widget_moved` on each row for drag reorder. One `SongWidget` per song —
 **repeater**.
 
-### `gnomemusic/widgets/playlistcontrols.py` + `data/ui/PlaylistControls.ui` → `lib/playlist_controls.rb`
+### `gnomemusic/widgets/playlistcontrols.py` + `data/ui/PlaylistControls.ui` → `lib/playlist_controls.rb` — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -288,7 +296,7 @@ by smart-playlist kind) and `Gtk.Label` (ellipsize end, 16/10px margins).
 | Menu `playlistMenu` | 3 items | | | `_Play`, `_Delete`, `_Rename…` |
 | Conditional | the menu is insensitive / rename disabled for smart playlists |
 
-### `gnomemusic/widgets/playlistdialog.py` + `data/ui/PlaylistDialog.ui` → `lib/playlist_dialog.rb` — dialog
+### `gnomemusic/widgets/playlistdialog.py` + `data/ui/PlaylistDialog.ui` → `lib/playlist_dialog.rb` — dialog — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -307,14 +315,14 @@ by smart-playlist kind) and `Gtk.Label` (ellipsize end, 16/10px margins).
 | `PlaylistDialogRow` | N | — | — | one per user playlist — **repeater** |
 | Conditional | `_empty_box` when there are no user playlists |
 
-### `gnomemusic/widgets/playlistdialogrow.py` + `data/ui/PlaylistDialogRow.ui` → `lib/playlist_dialog_row.rb` — row
+### `gnomemusic/widgets/playlistdialogrow.py` + `data/ui/PlaylistDialogRow.ui` → `lib/playlist_dialog_row.rb` — row — **present**
 `Gtk.ListBoxRow` CSS `playlistdialog-row` (`:selected` and `:selected label`
 rules) → `Gtk.Box` with `Gtk.Label` (ellipsize end, 8px margins) and
 `Gtk.Image` `selection-mode-symbolic` (shown when selected).
 
 ## 6. Search
 
-### `gnomemusic/views/searchview.py` + `data/ui/SearchView.ui` → `lib/search_view.rb` — page
+### `gnomemusic/views/searchview.py` + `data/ui/SearchView.ui` → `lib/search_view.rb` — page — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -332,28 +340,28 @@ rules) → `Gtk.Box` with `Gtk.Label` (ellipsize end, 8px margins) and
 | `SongWidget` / `AlbumCover` / `ArtistSearchTile` | N each | — | — | **repeaters** |
 | Conditional | artist and album sections hidden when their result set is empty; `status` page for no-search / no-results |
 
-### `gnomemusic/widgets/albumssearchnavigationpage.py` + `data/ui/AlbumsSearchNavigationPage.ui` → `lib/albums_search_navigation_page.rb` — page
+### `gnomemusic/widgets/albumssearchnavigationpage.py` + `data/ui/AlbumsSearchNavigationPage.ui` → `lib/albums_search_navigation_page.rb` — page — **present**
 `Adw.NavigationPage` title "Albums" → toolbar view + header bar →
 `Gtk.ScrolledWindow` → `Adw.Clamp` (1600) → `Gtk.Box` (margins 20/120) →
 `Gtk.FlowBox` (1–6 per line, selection none), `child-activated` →
 `_on_album_activated`; one `AlbumCover` per album — **repeater**.
 
-### `gnomemusic/widgets/artistssearchnavigationpage.py` + `data/ui/ArtistsSearchNavigationPage.ui` → `lib/artists_search_navigation_page.rb` — page
+### `gnomemusic/widgets/artistssearchnavigationpage.py` + `data/ui/ArtistsSearchNavigationPage.ui` → `lib/artists_search_navigation_page.rb` — page — **present**
 Same shape, title "Artists", `_all_artists_flowbox`, `child-activated` →
 `_on_artist_activated`; one `ArtistSearchTile` per artist — **repeater**.
 
-### `gnomemusic/widgets/artistsearchtile.py` + `data/ui/ArtistSearchTile.ui` → `lib/artist_search_tile.rb` — tile
+### `gnomemusic/widgets/artistsearchtile.py` + `data/ui/ArtistSearchTile.ui` → `lib/artist_search_tile.rb` — tile — **present**
 `Gtk.FlowBoxChild` CSS `tile` → `Gtk.Box` (`has_tooltip`, `query-tooltip` →
 `_on_tooltip_query`) with `Gtk.Image` CSS `tile-image` and a `Gtk.Label`
 (wrap, ellipsize middle, 20 chars, 1 line).
 
-### `gnomemusic/search.py` → `lib/search.rb` — support
+### `gnomemusic/search.py` → `lib/search.rb` — support — **present**
 Holds `search-mode-active` and the `State` enum (`NONE`, `NO_RESULT`,
 `RESULT`) the window and both header bars bind to.
 
 ## 7. Playback controls
 
-### `gnomemusic/widgets/playertoolbar.py` + `data/ui/PlayerToolbar.ui` → `lib/player_toolbar.rb` — bottom bar
+### `gnomemusic/widgets/playertoolbar.py` + `data/ui/PlayerToolbar.ui` → `lib/player_toolbar.rb` — bottom bar — **present**
 
 | Widget | × | CSS | Signals | Notes |
 |---|---:|---|---|---|
@@ -367,13 +375,13 @@ Holds `search-mode-active` and the `State` enum (`NONE`, `NO_RESULT`,
 | `RepeatModeButton` / `VolumeButton` | 1 / 1 | — | — | packed end |
 | `TwoLineTip` | 1 | — | — | the tooltip widget |
 
-### `gnomemusic/widgets/smoothscale.py` → `lib/smooth_scale.rb` — scale (no `.ui`)
+### `gnomemusic/widgets/smoothscale.py` → `lib/smooth_scale.rb` — scale (no `.ui`) — **present**
 `Gtk.Scale` subclass with per-pixel smoothing. `Gtk.GestureClick` (controller)
 → `pressed`/`released`; `change-value` → `_on_smooth_scale_seek`; follows the
 player's `notify::state` and `notify::duration`; insensitive while STOPPED or
 LOADING.
 
-### `gnomemusic/widgets/repeatmodebutton.py` + `data/ui/RepeatModeButton.ui` → `lib/repeat_mode_button.rb`
+### `gnomemusic/widgets/repeatmodebutton.py` + `data/ui/RepeatModeButton.ui` → `lib/repeat_mode_button.rb` — **present**
 `Gtk.Box` → `Gtk.MenuButton` CSS `circular`, direction up, accessible label
 "Set Repeat Mode", icon changes per mode
 (`media-playlist-consecutive-symbolic`, `…repeat-song-symbolic`,
@@ -381,51 +389,51 @@ LOADING.
 `RepeatMode`s ("Shuffle/Repeat Off", "Repeat Song", "Repeat All", "Shuffle")
 and a stateful action `repeatmenu.repeat` bound to the player's `repeat-mode`.
 
-### `gnomemusic/widgets/volumebutton.py` + `data/ui/VolumeButton.ui` → `lib/volume_button.rb`
+### `gnomemusic/widgets/volumebutton.py` + `data/ui/VolumeButton.ui` → `lib/volume_button.rb` — **present**
 `Gtk.Box` → `Gtk.MenuButton` CSS `circular`, direction up, accessible label
 "Adjust Volume", icon from volume level; popover (250px) with a
 `Gtk.ToggleButton` CSS `circular`+`flat` (`audio-volume-muted-symbolic`,
 accessible label "Mute/Unmute") and a `Gtk.Scale` on a `Gtk.Adjustment`
 (0.0–1.0, step 0.01, page 0.1). Cubic↔linear volume conversion.
 
-### `gnomemusic/widgets/twolinetip.py` + `data/ui/TwoLineTip.ui` → `lib/two_line_tip.rb` — tooltip
+### `gnomemusic/widgets/twolinetip.py` + `data/ui/TwoLineTip.ui` → `lib/two_line_tip.rb` — tooltip — **present**
 `Gtk.Box` (vertical) with two `Gtk.Label`s, the first CSS `bold-label`.
 
 ## 8. Toasts, notifications, chrome
 
-### `gnomemusic/songtoast.py` → `lib/song_toast.rb` — toast
+### `gnomemusic/songtoast.py` → `lib/song_toast.rb` — toast — **present**
 `Adw.Toast` "{song} removed from {playlist}", button "Undo", action
 `toast.undo` installed on the window, `dismissed` → commit the removal.
 
-### `gnomemusic/playlisttoast.py` → `lib/playlist_toast.rb` — toast
+### `gnomemusic/playlisttoast.py` → `lib/playlist_toast.rb` — toast — **present**
 `Adw.Toast` "Playlist {title} removed", button "Undo", action `toast.undo`,
 `dismissed` → commit the deletion.
 
-### `gnomemusic/notificationmanager.py` → `lib/notification_manager.rb` — support
+### `gnomemusic/notificationmanager.py` → `lib/notification_manager.rb` — support — **present**
 Refcounts loading operations and drives the window's `_loading_progress`
 (`loading_visible` / `loading_pulse`).
 
-### `data/style.css` → `lib/style.rb` (`Gtk::CssProvider`) — stylesheet
+### `data/style.css` → `lib/style.rb` (`Gtk::CssProvider`) — stylesheet — **present**
 Classes defined upstream: `artist-label`, `tile`, `tile-image`,
 `playlist-icon`, `disc-label`, `smooth-scale`, `grey-image`, `bold-label`,
 `playlistdialog-row`, `search-header`, `drag-handle`, `songwidget`, `star`
 (with `interacted`/`starred` and the `rotate_star`/`rotate_unstar` keyframes),
 plus `#albums gridview` child/hover/selected rules.
 
-### `data/org.gnome.Music.gschema.xml` → `lib/settings.rb` — settings
+### `data/org.gnome.Music.gschema.xml` → `lib/settings.rb` — settings — **present**
 Keys: `window-size` (`[768, 600]`), `window-maximized` (true), `repeat`
 (enum none/song/all/shuffle), `replaygain` (enum disabled/album/track),
 `inhibit-suspend` (false).
 
-### `gnomemusic/utils.py` → `lib/utils.rb` — support
+### `gnomemusic/utils.py` → `lib/utils.rb` — support — **present**
 `ArtSize`, `CoreObjectType`, `DefaultIconType`, `RepeatMode` (icon + label per
 mode), `SongStateIcon`, `View` (ALBUM/ARTIST/PLAYLIST), "Unknown Artist",
 duration formatting.
 
-### `gnomemusic/coverpaintable.py` → `lib/cover_paintable.rb` — paintable
+### `gnomemusic/coverpaintable.py` → `lib/cover_paintable.rb` — paintable — **MISSING**
 The rounded placeholder/cover art paintable every tile and the toolbar use.
 
-### `gnomemusic/grilowrappers/smartplaylist.py` → `lib/smart_playlists.rb` — data + user-facing titles
+### `gnomemusic/grilowrappers/smartplaylist.py` → `lib/smart_playlists.rb` — data + user-facing titles — **present**
 Seven smart playlists shown in the playlists sidebar: "Most Played", "Never
 Played", "Recently Played", "Recently Added", "Starred Songs",
 "Insufficiently Tagged", "All Songs".
@@ -435,30 +443,30 @@ Played", "Recently Played", "Recently Added", "Starred Songs",
 # Supporting (non-widget) upstream modules
 
 Not components, but the port needs equivalents before any view has data.
-None exist on `ruby`.
+12 of these exist on `ruby`; 13 do not. The `Present` column is authoritative.
 
-| Upstream | Suggested `lib/*.rb` | Role |
-|---|---|---|
-| `gnomemusic/coremodel.py` | `lib/core_model.rb` | all list models, `songs-available`, `queue-loaded` |
-| `gnomemusic/corealbum.py` | `lib/core_album.rb` | album object |
-| `gnomemusic/coreartist.py` | `lib/core_artist.rb` | artist object |
-| `gnomemusic/coredisc.py` | `lib/core_disc.rb` | disc object |
-| `gnomemusic/coresong.py` | `lib/core_song.rb` | song object |
-| `gnomemusic/coregrilo.py` | `lib/core_grilo.rb` | Grilo source wiring, `tracker-available` |
-| `gnomemusic/grilowrappers/localsearchwrapper.py` | `lib/local_search_wrapper.rb` | SPARQL queries over localsearch |
-| `gnomemusic/grilowrappers/localsearchplaylists.py` | `lib/local_search_playlists.rb` | playlist storage |
-| `gnomemusic/grilowrappers/playlist.py` | `lib/playlist.rb` | playlist model |
-| `gnomemusic/trackerwrapper.py` | `lib/tracker_wrapper.rb` | `TrackerState` enum, connection |
-| `gnomemusic/player.py` | `lib/player.rb` | playback state machine, `RepeatMode` |
-| `gnomemusic/queue.py` | `lib/queue.rb` | play queue |
-| `gnomemusic/gstplayer.py` | `lib/gst_player.rb` | GStreamer playbin, `Playback` enum |
-| `gnomemusic/shufflelistmodel.py` | `lib/shuffle_list_model.rb` | shuffle model |
-| `gnomemusic/mpris.py` | `lib/mpris.rb` | MPRIS2 D-Bus interface |
-| `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `storeart.py`, `mediaartloader.py`, `embeddedart.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/store_art.rb`, `lib/media_art_loader.rb`, `lib/embedded_art.rb`, `lib/texture_cache.rb` | cover-art pipeline |
-| `gnomemusic/inhibitsuspend.py`, `pauseonsuspend.py` | `lib/inhibit_suspend.rb`, `lib/pause_on_suspend.rb` | session/power integration |
-| `gnomemusic/musiclogger.py`, `asynciolimiter.py` | `lib/music_logger.rb`, (drop) | logging; the asyncio limiter is Python-specific plumbing |
-| `data/queries/*.rq` (19 files) | `lib/queries/` or inline | SPARQL used by the localsearch wrapper |
-| `po/` (74 catalogues), `help/C/*.page` (10 pages) | translation / help parity steps | out of scope for this survey |
+| Upstream | Suggested `lib/*.rb` | Role | Present |
+|---|---|---|---|
+| `gnomemusic/coremodel.py` | `lib/core_model.rb` | all list models, `songs-available`, `queue-loaded` | yes |
+| `gnomemusic/corealbum.py` | `lib/core_album.rb` | album object | yes |
+| `gnomemusic/coreartist.py` | `lib/core_artist.rb` | artist object | yes |
+| `gnomemusic/coredisc.py` | `lib/core_disc.rb` | disc object | yes |
+| `gnomemusic/coresong.py` | `lib/core_song.rb` | song object | yes |
+| `gnomemusic/coregrilo.py` | `lib/core_grilo.rb` | Grilo source wiring, `tracker-available` | **no** |
+| `gnomemusic/grilowrappers/localsearchwrapper.py` | `lib/local_search_wrapper.rb` | SPARQL queries over localsearch | **no** |
+| `gnomemusic/grilowrappers/localsearchplaylists.py` | `lib/local_search_playlists.rb` | playlist storage | yes |
+| `gnomemusic/grilowrappers/playlist.py` | `lib/playlist.rb` | playlist model | yes |
+| `gnomemusic/trackerwrapper.py` | `lib/tracker_wrapper.rb` | `TrackerState` enum, connection | **no** |
+| `gnomemusic/player.py` | `lib/player.rb` | playback state machine, `RepeatMode` | yes |
+| `gnomemusic/queue.py` | `lib/queue.rb` | play queue | yes |
+| `gnomemusic/gstplayer.py` | `lib/gst_player.rb` | GStreamer playbin, `Playback` enum | yes |
+| `gnomemusic/shufflelistmodel.py` | `lib/shuffle_list_model.rb` | shuffle model | yes |
+| `gnomemusic/mpris.py` | `lib/mpris.rb` | MPRIS2 D-Bus interface | **no** |
+| `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `storeart.py`, `mediaartloader.py`, `embeddedart.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/store_art.rb`, `lib/media_art_loader.rb`, `lib/embedded_art.rb`, `lib/texture_cache.rb` | cover-art pipeline | **no** (all 7) |
+| `gnomemusic/inhibitsuspend.py`, `pauseonsuspend.py` | `lib/inhibit_suspend.rb`, `lib/pause_on_suspend.rb` | session/power integration | **no** (both) |
+| `gnomemusic/musiclogger.py`, `asynciolimiter.py` | `lib/music_logger.rb`, (drop) | logging; the asyncio limiter is Python-specific plumbing | `music_logger` yes |
+| `data/queries/*.rq` (19 files) | `lib/queries/` or inline | SPARQL used by the localsearch wrapper | n/a |
+| `po/` (74 catalogues), `help/C/*.page` (10 pages) | translation / help parity steps | out of scope for this survey | n/a |
 
 ---
 
@@ -466,11 +474,17 @@ None exist on `ruby`.
 
 1. **Upstream ref name.** The brief says `origin/main`; the only upstream ref
    in this clone is `origin/master`. Every later step must use `master`.
-2. **Nothing is ported.** `lib/` is the scaffold only, so there is no parity
-   baseline to diff against — the first port units define the shape.
+2. **Two user-facing components still missing.** `lib/disc_list_item.rb`
+   (`data/ui/DiscListItem.ui`, the `Gtk.ListItem` template binding
+   `CoreDisc.disc_nr` + `CoreDisc.model` into a `DiscBox`) and
+   `lib/cover_paintable.rb` (`gnomemusic/coverpaintable.py`, the rounded
+   placeholder/cover paintable every tile and the toolbar draw). Everything
+   else user-facing exists.
 3. **No data source exists for Ruby.** Upstream reads its collection through
    **Grilo + localsearch/Tracker SPARQL** and plays through **GStreamer**.
-   Neither Grilo nor Tracker has usable Ruby bindings in the fork's dev shell.
+   Neither Grilo nor Tracker has usable Ruby bindings in the fork's dev shell,
+   so `core_grilo`, `local_search_wrapper` and `tracker_wrapper` are all still
+   absent and `core_model` has no real source behind it.
    The port needs a decided substitute (filesystem scan plus a tag reader, and
    a `gstreamer` gem or `Gst` via GObject introspection) before `CoreModel`,
    `CoreGrilo` or any view can show real content. This is the single largest
