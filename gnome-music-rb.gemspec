@@ -96,6 +96,27 @@ Gem::Specification.new do |spec|
   spec.executables = ["gnome-music"]
   spec.require_paths = ["lib"]
 
+  # Runtime dependencies. This gemspec had none at all, which is true of 78 of
+  # the 90 forks: the app's gems were declared only in nix/Gemfile, so
+  # `gem install` produced something that could not load its own toolkit.
+  spec.add_dependency("gem_kit", "~> 0.2")
+  spec.add_dependency("gtk4", "~> 4.3")
+  spec.add_dependency("adwaita", "~> 4.3")
+  spec.add_dependency("glib2", "~> 4.3")
+
+  # The GObject Introspection bindings this app needs.
+  # Grl browses the media sources, MediaArt finds and caches album art,
+  # Tsparql is the index, GstPbutils discovers a file's streams, Soup fetches.
+  #
+  # Each is a loader over one typelib, so it also needs that typelib present at
+  # runtime. flake.nix carries them for the dev shell; a packaged app needs the
+  # distribution's equivalents, which each gem's README names.
+  spec.add_dependency("grilo", "~> 1.0")
+  spec.add_dependency("libmediaart", "~> 1.0")
+  spec.add_dependency("tsparql", "~> 1.0")
+  spec.add_dependency("gstreamer_pbutils", "~> 1.0")
+  spec.add_dependency("soup3", "~> 1.0")
+
   # NOTE: It is preferable to list development dependencies in the gemspec due to increased
   #       visibility and discoverability.
   #       However, development dependencies in gemspec will install on

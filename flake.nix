@@ -25,6 +25,14 @@
           libadwaita
           harfbuzz
           librsvg
+          # Carrying the typelibs for this app's binding gems. gtkStack feeds
+          # both buildInputs and typelibPath, so one list does both jobs.
+          grilo
+          libmediaart
+          tinysparql
+          gst_all_1.gst-plugins-base
+          gst_all_1.gstreamer
+          libsoup_3
         ]
         # The Ruby `pkg-config` gem resolves `Requires.private` transitively and
         # hard-fails if any .pc in the chain is missing, so gtk4's whole private

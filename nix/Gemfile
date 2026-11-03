@@ -10,3 +10,8 @@ source "https://rubygems.org"
 
 gem "adwaita"
 gem "gtk4"
+gem "grilo"
+gem "libmediaart"
+gem "tsparql"
+gem "gstreamer_pbutils"
+gem "soup3"
