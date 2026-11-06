@@ -3,6 +3,7 @@
 require 'adwaita'
 require_relative 'cover_paintable'
 require_relative 'disc_box'
+require_relative 'disc_list_item'
 require_relative 'playlist_dialog'
 require_relative 'utils'
 
