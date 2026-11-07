@@ -16,36 +16,48 @@ component is **the pair of files**, and both halves map to one `lib/*.rb`.
 
 ## Current state of the port
 
-Refreshed after the third porting pass (`Wire the binding gems and port
-pause_on_suspend`), which followed the second (`Port the cover-art pipeline
-and the suspend inhibitor`) and the first (`Port the application shell, core
-models, album/artist/playlist/search views and the player`). `lib/` on
-`ruby` now holds **68 files**; the scaffold `lib/gnome_music.rb` requires
-`lib/main.rb`, which is the real `class App`, launched from
+Refreshed at the latest commit on `ruby` (`d3e2336a`, "Fix TrackerStore
+favorite writeback and drop unused gstreamer_pbutils"), which followed a run
+of passes that wired the four mandatory binding gems for real
+(`core_grilo`/Grilo cover lookup, `tracker_store`/Tsparql favorite
+writeback), ported `EmbeddedArt`/`StoreArt`, `PauseOnSuspend`, and
+`DiscListItem`. `lib/` on `ruby` now holds **73 files** (71 under `lib/`
+proper plus the gem-scaffold version file); the scaffold `lib/gnome_music.rb`
+requires `lib/main.rb`, which is the real `class App`, launched from
 `exe/gnome-music`.
 
-The `grilo`, `libmediaart`, `tsparql`, `gstreamer_pbutils` and `soup3` gems
-are now in the gemspec, the runtime Gemfile and the flake's typelib path, and
-all five load (confirmed with `require` + a constant count in the dev
-shell) — the "no Grilo/Tracker bindings in the dev shell" premise some of
-the component notes below were written under no longer holds. That removes
-the dependency blocker for `core_grilo`, `local_search_wrapper`,
-`tracker_wrapper`, `store_art` and `embedded_art`; none of the five is
-written yet, so they stay listed as missing, not as blocked.
+The `grilo`, `libmediaart`, `tsparql` and `soup3` gems (the four named in the
+brief) are in the gemspec, the runtime Gemfile and the flake's typelib path,
+and each is `require`d and exercised on a live code path: `core_grilo.rb`
+calls `Grl::Registry`/`Grl::Source#resolve`, `media_art.rb` calls
+`MediaArt`, `store_art.rb` calls `Soup3`, `tracker_store.rb` calls
+`Tsparql::SparqlConnection`. `gstreamer_pbutils` was removed from the
+gemspec in the latest commit because nothing under `lib/` requires it — the
+brief's "do not re-declare a dependency that pass deliberately removed"
+case. This inventory does not re-verify the full gem-wiring checklist
+(gemspec/Gemfile/lock/typelib/drive-script-exercises-it); that is the
+accountability pass's job, and `.reports/parity-accountability.md` already
+covers it in detail.
 
-**Component status: 46 of 47 user-facing components are present; 1 is
-missing.** Of the 25 supporting (non-widget) modules, 18 are present and 7
-are missing — all of them in the Grilo/Tracker, remote-art and MPRIS
-clusters. The cover-art pipeline landed in the second porting pass, minus
-the two pieces that need a data source the port does not have yet:
-`embedded_art` and `store_art`. `pause_on_suspend` landed in the third pass.
+**Component status: 47 of 47 user-facing components are present.** Every
+`.ui`-backed widget, dialog, page, row, menu, toast and header bar — including
+`DiscListItem`, the last gap from the previous survey — now has a `lib/*.rb`
+file. Of the 25 supporting (non-widget) modules, 22 are present and 3 are
+missing, down from 7: `core_grilo`, `store_art`, `embedded_art` and
+`tracker_store` (upstream's local-db half) all landed since the previous
+survey. What remains missing is `mpris` outright, and two sub-pieces that
+are documented as blocked on a real binding gap rather than simply unwritten
+(see Blockers below): the session-Tracker **collection browsing** half of
+`trackerwrapper.py`/`localsearchwrapper.py` (`Tracker.SparqlConnection.bus_new`
+has no usable binding), which means `core_model.rb` still has no real
+music-collection data source.
 
 | Status | Count | Which |
 |---|---:|---|
-| user-facing components present | 46 | every window, dialog, page, view, tile, row, menu, toast, header bar and playback control, plus the cover paintable |
-| user-facing components missing | 1 | `lib/disc_list_item.rb` |
-| supporting modules present | 18 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger`, `album_art`, `artist_art`, `song_art`, `media_art_loader`, `texture_cache`, `inhibit_suspend`, `pause_on_suspend` (and `media_art`, which stands in for libmediaart) |
-| supporting modules missing | 7 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `store_art`, `embedded_art` |
+| user-facing components present | 47 | every window, dialog, page, view, tile, row, menu, toast, header bar, playback control and list-item template, including `disc_list_item` |
+| user-facing components missing | 0 | — |
+| supporting modules present | 22 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `core_grilo`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger`, `album_art`, `artist_art`, `song_art`, `media_art_loader`, `media_art`, `texture_cache`, `inhibit_suspend`, `pause_on_suspend`, `store_art`, `embedded_art`, `tracker_store` (local-db half only) |
+| supporting modules missing | 3 | `mpris`; the session-Tracker **collection-browsing** half of `trackerwrapper.py` (`local_search_wrapper` equivalent) — blocked, not merely unwritten |
 
 Totals upstream: 33 `.ui` files under `data/ui/`, 68 Python modules under
 `gnomemusic/`, 1 GSettings schema, 1 stylesheet, 19 SPARQL queries, 74 `po/`
@@ -210,10 +222,12 @@ Restores and saves `window-size` / `window-maximized`; connects
 with CSS `boxed-list`, selection none, `row-activated` → `_song_activated`;
 one `SongWidget` per song (**repeater**).
 
-### `data/ui/DiscListItem.ui` → `lib/disc_list_item.rb` — list item template — **MISSING**
+### `data/ui/DiscListItem.ui` → `lib/disc_list_item.rb` — list item template — **present**
 `Gtk.ListItem` template with no backing Python file (own unit): a vertical
 `Gtk.Box`, a `Gtk.Label` bound to `CoreDisc.disc_nr`, and a `DiscBox` bound to
-`CoreDisc.model`.
+`CoreDisc.model`. Ported even though no upstream `.py`/`.ui` file references
+it (see the previous survey's note #2) — kept for full parity rather than
+dropped as dead code.
 
 ### `gnomemusic/widgets/songwidget.py` + `data/ui/SongWidget.ui` → `lib/song_widget.rb` — song row — **present**
 
@@ -472,11 +486,11 @@ Not components, but the port needs equivalents before any view has data.
 | `gnomemusic/coreartist.py` | `lib/core_artist.rb` | artist object | yes |
 | `gnomemusic/coredisc.py` | `lib/core_disc.rb` | disc object | yes |
 | `gnomemusic/coresong.py` | `lib/core_song.rb` | song object | yes |
-| `gnomemusic/coregrilo.py` | `lib/core_grilo.rb` | Grilo source wiring, `tracker-available` | **no** |
-| `gnomemusic/grilowrappers/localsearchwrapper.py` | `lib/local_search_wrapper.rb` | SPARQL queries over localsearch | **no** |
+| `gnomemusic/coregrilo.py` | `lib/core_grilo.rb` | Grilo registry setup + remote cover-source `#resolve` lookup | yes (cover-lookup half only; the TrackerWrapper/LocalSearchWrapper ownership half is not ported — see Blockers) |
+| `gnomemusic/grilowrappers/localsearchwrapper.py` | (no `lib/*.rb` — blocked) | SPARQL queries over the session Tracker indexer (collection browsing) | **no** — blocked, not merely unwritten (see Blockers) |
 | `gnomemusic/grilowrappers/localsearchplaylists.py` | `lib/local_search_playlists.rb` | playlist storage | yes |
 | `gnomemusic/grilowrappers/playlist.py` | `lib/playlist.rb` | playlist model | yes |
-| `gnomemusic/trackerwrapper.py` | `lib/tracker_wrapper.rb` | `TrackerState` enum, connection | **no** |
+| `gnomemusic/trackerwrapper.py` | `lib/tracker_store.rb` | local Tracker (TinySparql) connection, favorite-tag writeback | yes (local-db half only; the session-indexer bus connection for collection browsing is not ported — see Blockers) |
 | `gnomemusic/player.py` | `lib/player.rb` | playback state machine, `RepeatMode` | yes |
 | `gnomemusic/queue.py` | `lib/queue.rb` | play queue | yes |
 | `gnomemusic/gstplayer.py` | `lib/gst_player.rb` | GStreamer playbin, `Playback` enum | yes |
@@ -484,7 +498,7 @@ Not components, but the port needs equivalents before any view has data.
 | `gnomemusic/mpris.py` | `lib/mpris.rb` | MPRIS2 D-Bus interface | **no** |
 | `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `mediaartloader.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/media_art_loader.rb`, `lib/texture_cache.rb` | cover-art pipeline | yes (all 5) |
 | (libmediaart, `MediaArt` 2.0 GIR) | `lib/media_art.rb` | the MediaArt cache path and the directory cover lookup that fills it, per the Media Art Storage Spec; no MediaArt typelib in the dev shell | yes |
-| `gnomemusic/storeart.py`, `embeddedart.py` | `lib/store_art.rb`, `lib/embedded_art.rb` | remote store art (needs `core_grilo`, which does not exist yet); embedded art (needs the now-wired `GstTag`/`GstPbutils`/`MediaArt`, but not written yet) | **no** (both) |
+| `gnomemusic/storeart.py`, `embeddedart.py` | `lib/store_art.rb`, `lib/embedded_art.rb` | remote store art (downloads via Soup3, caches via the MediaArt gem); embedded art (tag-embedded cover extraction) | yes (both) |
 | `gnomemusic/inhibitsuspend.py` | `lib/inhibit_suspend.rb` | suspend inhibitor while playing | yes |
 | `gnomemusic/pauseonsuspend.py` | `lib/pause_on_suspend.rb` | logind `PrepareForSleep` delay lock | yes |
 | `gnomemusic/musiclogger.py`, `asynciolimiter.py` | `lib/music_logger.rb`, (drop) | logging; the asyncio limiter is Python-specific plumbing | `music_logger` yes |
@@ -495,29 +509,40 @@ Not components, but the port needs equivalents before any view has data.
 
 # Blockers and decisions needed before porting
 
-1. **Upstream ref name.** The brief says `origin/main`; the only upstream ref
-   in this clone is `origin/master`. Every later step must use `master`.
-2. **One user-facing component still missing**, and it is dead code upstream.
-   `data/ui/DiscListItem.ui` is a `Gtk.ListItem` template binding
-   `CoreDisc.disc_nr` + `CoreDisc.model` into a `DiscBox`, but no upstream
-   `.py` or `.ui` file references it — `AlbumWidget` builds its discs with a
-   `GtkListBox` and a header func, which the port already does. Porting it
-   means adding a class nothing can reach, so it is deliberately left for a
-   decision rather than written.
-3. **No data source exists for Ruby.** Upstream reads its collection through
-   **Grilo + localsearch/Tracker SPARQL** and plays through **GStreamer**.
-   Neither Grilo nor Tracker has usable Ruby bindings in the fork's dev shell,
-   so `core_grilo`, `local_search_wrapper` and `tracker_wrapper` are all still
-   absent and `core_model` has no real source behind it.
-   The port needs a decided substitute (filesystem scan plus a tag reader, and
-   a `gstreamer` gem or `Gst` via GObject introspection) before `CoreModel`,
-   `CoreGrilo` or any view can show real content. This is the single largest
-   open question.
-4. **MPRIS2** needs a D-Bus story in Ruby; if it is dropped, say so explicitly
-   rather than silently.
-5. **GResource/GtkBuilder are not used by the port** by design, so the 31
-   `.ui` trees must be re-expressed as memoized widget methods — the mapping
-   above is the contract for that.
+1. **Upstream ref name.** The brief (in earlier passes) said `origin/main`;
+   the only upstream ref in this clone is `origin/master`. Every step uses
+   `master`.
+2. ~~One user-facing component missing~~ — **resolved.** `disc_list_item.rb`
+   is now ported (see above), even though no upstream `.py`/`.ui` file
+   reaches `DiscListItem.ui`; it is kept for full parity with upstream's
+   file set rather than dropped as dead code.
+3. **The session-Tracker collection-browsing connection remains genuinely
+   blocked, not merely unwritten.** Upstream reads the user's music
+   collection by opening a *second* Tracker connection to the session-wide
+   indexer/localsearch bus (`Tracker.SparqlConnection.bus_new`) and querying
+   it via Grilo's `grl-tracker3` source. `core_grilo.rb` and
+   `tracker_store.rb` both document, with the exact binding gap found by
+   reading the gem source: `Tsparql::SparqlConnection.bus_new_async`'s block
+   hands back a bare `Gio::Task` with no `bus_new_finish` anywhere in the
+   `tsparql` gem, so the bus connection cannot be obtained through this
+   binding as it stands. `tracker_store.rb` instead opens the port's own
+   **local** Tracker database with the synchronous `SparqlConnection.new`
+   constructor (a real, working GI call) and uses it only for the
+   favorite-tag writeback. `core_model.rb` therefore still has no real
+   music-collection data source — this is the single largest open question
+   carried forward from the previous survey, now narrowed to one named
+   binding gap instead of "no Grilo/Tracker bindings at all" (both gems do
+   load and are used for real elsewhere: Grilo for cover-source lookup,
+   Tsparql for the local favorite tag).
+4. **MPRIS2** (`gnomemusic/mpris.py`) is still entirely unwritten — no
+   `lib/mpris.rb`, no D-Bus interface registration anywhere in `lib/`. It
+   needs a D-Bus story in Ruby (likely `Gio::DBusProxy`/`Gio::DBusExportedObject`
+   via gio2, which is already a dependency); if it is dropped instead, say so
+   explicitly rather than silently.
+5. **GResource/GtkBuilder are not used by the port** by design, so the 33
+   `.ui` trees are re-expressed as memoized widget methods — the mapping
+   above is the contract for that, and it is now complete: every `.ui` file
+   has a `lib/*.rb` counterpart.
 6. **Translations were not built.** 74 `po/` catalogues exist upstream; the
    port has no gettext-equivalent marker anywhere in `lib/` or `exe/`, no
    `.po`/`.pot`/`.mo` file anywhere in the repository, and no catalogue
@@ -525,8 +550,9 @@ Not components, but the port needs equivalents before any view has data.
    "out of scope" by any decision this port gets to make — upstream shipped
    74 languages, so upstream set the scope, and today's port ships English
    only, with every user-visible string a bare literal that a future pass
-   would have to find and wrap by hand in all 68 `lib/*.rb` files, because
-   none of them carry a marker a wrapping step could search for.
+   would have to find and wrap by hand across `lib/*.rb`, because none of
+   them carry a marker a wrapping step could search for. (`.reports/parity-translation-parity.md`
+   from a previous pass covers this in more depth.)
 7. **Binding quirks to respect** (see `.claude/skills/ruby-gtk`):
    `Adwaita::Application` is broken, so app actions and accelerators go on
    `Gtk::Application`; `Adwaita::NavigationPage.new(child, title)` is
