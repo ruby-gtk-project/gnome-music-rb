@@ -2,6 +2,7 @@
 
 require 'adwaita'
 require_relative 'song_art'
+require_relative 'tracker_store'
 require_relative 'utils'
 
 # CoreSong carries everything the app knows about one song.
@@ -100,14 +101,14 @@ class CoreSong < GLib::Object
 
   def favorite? = @favorite
 
-  # Upstream writes the favorite tag back to Tracker here. The Tracker
-  # writeback lives in coregrilo.py, which is not ported yet, so starring a
-  # song holds for the session the same way it does before upstream's
-  # writeback completes.
+  # Upstream writes the favorite tag back to Tracker here, through
+  # TrackerWrapper#update_tag; TrackerStore (lib/tracker_store.rb) is this
+  # port's equivalent, over the real `tsparql` gem.
   def favorite=(favorite)
     if @favorite != favorite
       @favorite = favorite
       notify_property(:favorite)
+      TrackerStore.instance.update_favorite(@id, favorite)
     end
   end
 
