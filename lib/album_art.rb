@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'core_grilo'
 require_relative 'embedded_art'
 require_relative 'media_art'
 require_relative 'music_logger'
@@ -12,9 +13,10 @@ require_relative 'music_logger'
 # as it has found art for the album.
 #
 # Upstream looks in three places in turn: the MediaArt cache, the album's own
-# files through EmbeddedArt, and a remote store through CoreGrilo. The first
-# two are here. The remote store is not, because it hangs off CoreGrilo,
-# which needs a Tracker-backed Grilo source this port does not have yet.
+# files through EmbeddedArt, and a remote store through CoreGrilo. All three
+# are attempted here, though the third currently never finds anything — see
+# core_grilo.rb for why `Grl::Source#resolve` cannot actually be called
+# through this port's `grilo` gem.
 #
 # Upstream's five-per-second limiter is an asyncio rate limiter; here the
 # cache lookup is deferred to an idle callback, so a view that builds two
@@ -56,9 +58,19 @@ class AlbumArt
         embedded.on_art_found do |found|
           if found
             in_cache
+          else
+            from_grilo
           end
         end
         embedded.query(@corealbum, @album)
       end
+    end
+
+    # Upstream's remote store, through CoreGrilo. A resolved cover would
+    # normally be handed to StoreArt to download and cache (see
+    # store_art.rb for why that handoff is not wired up), so this currently
+    # only reaches the real Grilo call, not a thumbnail.
+    def from_grilo
+      CoreGrilo.instance.resolve_album_cover(@album, @artist)
     end
 end

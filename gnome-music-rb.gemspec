@@ -105,12 +105,17 @@ Gem::Specification.new do |spec|
   spec.add_dependency("glib2", "~> 4.3")
 
   # The GObject Introspection bindings this app needs.
-  # Grl browses the media sources, MediaArt finds and caches album art,
-  # Tsparql is the index, GstPbutils discovers a file's streams, Soup fetches.
+  # Grl resolves remote album covers (lib/core_grilo.rb), MediaArt finds and
+  # caches album art, Tsparql is the local Tracker store favorites and other
+  # tags are written back to (lib/tracker_store.rb), GstPbutils discovers a
+  # file's streams, Soup fetches.
   #
   # Each is a loader over one typelib, so it also needs that typelib present at
   # runtime. flake.nix carries them for the dev shell; a packaged app needs the
-  # distribution's equivalents, which each gem's README names.
+  # distribution's equivalents, which each gem's README names. grilo also
+  # needs its plugin shared libraries (grl-tracker3, grl-lua-factory) found
+  # through GRL_PLUGIN_PATH, which is not a typelib concern; flake.nix's
+  # grlPluginPath carries that.
   spec.add_dependency("grilo", "~> 1.0")
   spec.add_dependency("libmediaart", "~> 1.0")
   spec.add_dependency("tsparql", "~> 1.0")

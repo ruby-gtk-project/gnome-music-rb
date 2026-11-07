@@ -34,6 +34,15 @@
           gst_all_1.gstreamer
           libsoup_3
         ]
+        # grl-tracker3 (the Grl::Source core_grilo.rb loads) and
+        # grl-lua-factory are shared libraries Grl::Registry dlopens by
+        # path at runtime, not typelibs on GI_TYPELIB_PATH, so they are not
+        # in gtkStack proper; grilo-plugins carries both. It is still built
+        # from this same pkgs so it links the one glib/orc this app's other
+        # GStreamer-linked pieces do — a grilo-plugins pulled from a
+        # different nixpkgs mismatches glibc/orc versions GStreamer's
+        # plugin scanner then rejects one by one.
+        ++ (with pkgs; [ grilo-plugins ])
         # The Ruby `pkg-config` gem resolves `Requires.private` transitively and
         # hard-fails if any .pc in the chain is missing, so gtk4's whole private
         # closure has to be on PKG_CONFIG_PATH, not just its public deps.
@@ -90,6 +99,11 @@
         ];
 
         gstPluginPath = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" gstStack;
+
+        # Where Grl::Registry#load_all_plugins finds libgrltracker3.so and
+        # libgrlluafactory.so — grilo's own plugin directory, not a typelib
+        # path.
+        grlPluginPath = "${pkgs.grilo-plugins}/lib/grilo-0.3";
 
         # ruby-gnome gems build C extensions with extconf.rb + the pkg-config
         # gem; nixpkgs only ships gemConfig entries for the GTK3-era subset, so
@@ -180,6 +194,7 @@
               --add-flags "$out/share/gnome-music/exe/${launcher}" \
               --set GI_TYPELIB_PATH "${typelibPath}" \
               --set GST_PLUGIN_SYSTEM_PATH_1_0 "${gstPluginPath}" \
+              --set GRL_PLUGIN_PATH "${grlPluginPath}" \
               --prefix XDG_DATA_DIRS : "$out/share" \
               --prefix XDG_DATA_DIRS : "$out/share/gsettings-schemas/gnome-music-0.1.0" \
               --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
@@ -229,6 +244,7 @@
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}:${pkgs.adwaita-icon-theme}/share:$XDG_DATA_DIRS"
             export GI_TYPELIB_PATH="${typelibPath}''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
             export GST_PLUGIN_SYSTEM_PATH_1_0="${gstPluginPath}''${GST_PLUGIN_SYSTEM_PATH_1_0:+:$GST_PLUGIN_SYSTEM_PATH_1_0}"
+            export GRL_PLUGIN_PATH="${grlPluginPath}''${GRL_PLUGIN_PATH:+:$GRL_PLUGIN_PATH}"
             export RUBYLIB="$PWD/lib''${RUBYLIB:+:$RUBYLIB}"
             [ -d data/schemas ] && export GSETTINGS_SCHEMA_DIR="$PWD/data/schemas"
             unset BUNDLE_GEMFILE BUNDLE_FROZEN
