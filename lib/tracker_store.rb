@@ -38,11 +38,19 @@ class TrackerStore
   end
 
   # Writes the favorite tag for a song's Tracker resource, matching
-  # upstream's TrackerWrapper#_update_favorite. `urn` is the CoreSong's id;
-  # a song with no real Tracker urn (nothing loads the collection into
-  # Tracker yet; see core_model.rb) still runs the query, which simply
-  # describes a resource Tracker has never seen.
-  def update_favorite(urn, favorite)
+  # upstream's TrackerWrapper#_update_favorite. `id` is the CoreSong's id;
+  # nothing loads the collection into Tracker yet (see core_model.rb), so
+  # today every id this is called with (and every CoreAlbum/CoreArtist id,
+  # built as "album:..."/"artist:..." in core_model.rb) is a plain string,
+  # not a real Tracker urn. SPARQL's INSERT/DELETE DATA requires an absolute
+  # IRI for the subject of `<...>` and raises
+  # "«id» is not an absolute IRI" (a GLib::Error) for anything else —
+  # confirmed directly against this gem's `#update`. Wrapping a non-IRI id
+  # in a private urn: namespace keeps the query itself from being rejected,
+  # still describing a resource Tracker has never seen, exactly as the urn
+  # case already did.
+  def update_favorite(id, favorite)
+    urn = to_urn(id)
     @connection.then do |connection|
       if favorite
         connection.update(
@@ -60,6 +68,17 @@ class TrackerStore
   end
 
   private
+
+    # An absolute IRI is left alone (a real urn:, file:// or other scheme);
+    # anything else (today, always) is wrapped so SPARQL accepts it as a
+    # subject.
+    def to_urn(id)
+      if id.to_s =~ %r{\A[a-zA-Z][a-zA-Z0-9+.-]*:}
+        id.to_s
+      else
+        "urn:gnome-music:song:#{id}"
+      end
+    end
 
     # $XDG_CACHE_HOME (or ~/.cache)/gnome-music/db, matching upstream's
     # TrackerWrapper#cache_directory (GLib.get_user_cache_dir there; the

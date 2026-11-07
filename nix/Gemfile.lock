@@ -39,9 +39,6 @@ GEM
     gsk4 (4.4.0)
       gdk4 (= 4.4.0)
       graphene1 (= 4.4.0)
-    gstreamer_pbutils (1.1.0)
-      gem_kit (~> 0.2)
-      gobject-introspection (~> 4.3)
     gtk4 (4.4.0)
       atk (= 4.4.0)
       gdk4 (= 4.4.0)
@@ -74,7 +71,6 @@ PLATFORMS
 DEPENDENCIES
   adwaita
   grilo
-  gstreamer_pbutils
   gtk4
   libmediaart
   soup3

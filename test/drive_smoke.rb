@@ -6,6 +6,14 @@
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 
 require 'tmpdir'
+require 'fileutils'
+
+# TrackerStore reads XDG_CACHE_HOME lazily on first use, so this has to be
+# set before anything touches it, to keep the favorite-write-back check
+# below off the real user's own Tracker cache.
+TRACKER_CACHE_ROOT = Dir.mktmpdir('music-tracker')
+ENV['XDG_CACHE_HOME'] = TRACKER_CACHE_ROOT
+
 require 'gnome_music'
 
 FAILURES = []
@@ -202,12 +210,74 @@ app.app.signal_connect('activate') do
       app.window.set_player_visible(true)
     end
 
+    # Exercises CoreSong#favorite=, which lib/core_song.rb now routes to
+    # TrackerStore.instance.update_favorite — a real SPARQL INSERT/DELETE
+    # DATA against a local Tracker (TinySparql) database (lib/tracker_store.rb).
+    # A fresh connection to that same database file, opened independently of
+    # TrackerStore's own singleton, proves the write actually landed rather
+    # than just that no exception was raised.
+    check('favorite toggling writes the tag back to tracker, for real') do
+      # s1 ('Opening'), not s3 — s3 starts out already favorited in the
+      # fixture, which would make the first favorite= below a no-op
+      # (CoreSong#favorite= only calls through when the value actually
+      # changes).
+      coresong = app.coremodel.songs.find { |song| song.id == 's1' }
+      unless coresong
+        raise 'fixture song s1 not found'
+      end
+      # coresong.id ('s1') is not an absolute IRI, so TrackerStore wraps it
+      # in a urn:gnome-music:song: namespace before using it as a SPARQL
+      # subject (lib/tracker_store.rb#to_urn) — match that here.
+      urn = "urn:gnome-music:song:#{coresong.id}"
+
+      # The first favorite= call is what makes TrackerStore.instance open
+      # its own connection (lazily, mkdir_p-ing the cache directory as it
+      # goes) — this independent connection has to be opened after that, or
+      # there is no database file yet to point at.
+      coresong.favorite = true
+
+      verify = Tsparql::SparqlConnection.new(
+        Tsparql::SparqlConnectionFlags::NONE,
+        Gio::File.new_for_path(File.join(TRACKER_CACHE_ROOT, 'gnome-music', 'db')),
+        Tsparql.sparql_get_ontology_nepomuk,
+        nil,
+      )
+
+      # Each cursor is closed explicitly right after use. Left for the GC to
+      # finalize instead, closing it that late crashes: ruby reproducibly
+      # segfaults in tracker_db_cursor_close, called from the cursor's
+      # finalizer, during interpreter shutdown (confirmed directly — the
+      # same class of binding fragility store_art.rb documents for soup3).
+      has_tag = false
+      verify.query("SELECT ?tag { <#{urn}> nao:hasTag ?tag }").then do |cursor|
+        has_tag = cursor.next
+        cursor.close
+      end
+      unless has_tag
+        raise 'favorite tag was not written to tracker'
+      end
+
+      coresong.favorite = false
+      still_tagged = false
+      verify.query("SELECT ?tag { <#{urn}> nao:hasTag ?tag }").then do |cursor|
+        still_tagged = cursor.next
+        cursor.close
+      end
+      if still_tagged
+        raise 'favorite tag was not removed from tracker'
+      end
+
+      verify.close
+    end
+
     app.app.quit
     false
   end
 end
 
 app.run
+
+FileUtils.remove_entry(TRACKER_CACHE_ROOT)
 
 puts(FAILURES.empty? ? 'SMOKE OK' : "SMOKE FAILURES: #{FAILURES.join(', ')}")
 exit(FAILURES.empty? ? 0 : 1)

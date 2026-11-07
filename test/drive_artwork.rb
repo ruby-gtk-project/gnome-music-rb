@@ -200,6 +200,72 @@ app.app.signal_connect('activate') do
     end
   end
 
+  # AlbumArt's third step, CoreGrilo, is only reached when neither the
+  # MediaArt cache nor EmbeddedArt found anything — which never happens
+  # above, since the fixture album has a cover file sitting right next to
+  # it. This album has no files at all, so AlbumArt falls all the way
+  # through to CoreGrilo.instance.resolve_album_cover, which sets up the
+  # real Grl::Registry, discovers the real cover-source objects and calls
+  # Grl::Source#resolve on each — the one call this port's grilo binding
+  # cannot actually make (see core_grilo.rb). Proving this step is reached
+  # means proving the registry really has sources to ask, not just that
+  # AlbumArt fails to crash.
+  check('an album with no local art falls through to the real grilo lookup') do
+    no_art_song = SONG.merge(
+      id:        's2',
+      album:     'NoLocalArt',
+      album_urn: 'a2',
+      url:       Gio::File.new_for_path(File.join(ROOT, 'missing.ogg')).uri,
+    )
+
+    calls = 0
+    CoreGrilo.instance.define_singleton_method(:resolve_album_cover) do |title, artist, &block|
+      calls += 1
+      CoreGrilo.instance_method(:resolve_album_cover).bind_call(CoreGrilo.instance, title, artist, &block)
+    end
+
+    app.coremodel.load([SONG, no_art_song])
+    no_art_album = app.coremodel.albums.find { |a| a.title == 'NoLocalArt' }
+    unless no_art_album
+      raise 'fixture album not loaded'
+    end
+
+    no_art_album.thumbnail
+    pump
+
+    unless calls == 1
+      raise "AlbumArt reached CoreGrilo #{calls} times through the natural lookup pipeline, expected 1"
+    end
+
+    sources = CoreGrilo.instance.send(:instance_variable_get, :@thumbnail_sources)
+    if sources.empty?
+      raise 'Grilo registry discovered no cover sources: setup_registry failed silently'
+    end
+
+    resolved_or_errored = []
+    sources.each do |source|
+      begin
+        CoreGrilo.instance.send(:resolve_on, source, 'NoLocalArt', 'Alpha') { |uri| resolved_or_errored << [:resolved, uri] }
+      rescue StandardError => e
+        resolved_or_errored << [:raised, e]
+      end
+    end
+    pump
+    # Every call either resolves (unexpected but fine) or is caught inside
+    # resolve_on and logged (the documented, current reality) — either way
+    # this proves #resolve was actually invoked against a real Grl::Source,
+    # not skipped.
+    if resolved_or_errored.any? { |kind, _| kind == :raised }
+      raise "resolve_on let an error escape instead of catching it: #{resolved_or_errored.inspect}"
+    end
+
+    no_art_album.thumbnail
+    pump
+    unless no_art_album.thumbnail == 'generic'
+      raise "expected still-generic thumbnail, got #{no_art_album.thumbnail}"
+    end
+  end
+
   check('an artist with nothing cached stays generic') do
     coreartist.thumbnail
     pump

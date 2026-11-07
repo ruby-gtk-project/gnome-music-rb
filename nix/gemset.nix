@@ -151,17 +151,6 @@
     };
     version = "4.4.0";
   };
-  gstreamer_pbutils = {
-    dependencies = ["gem_kit" "gobject-introspection"];
-    groups = ["default"];
-    platforms = [];
-    source = {
-      remotes = ["https://rubygems.org"];
-      sha256 = "1bk88mcp8fxfzj0gcf9v59sqbpbbhfx4d9z3bqvk4dljihx2hzh8";
-      type = "gem";
-    };
-    version = "1.1.0";
-  };
   gtk4 = {
     dependencies = ["atk" "gdk4" "gsk4"];
     groups = ["default"];
