@@ -66,6 +66,7 @@ class StatusNavigationPage < Adwaita::NavigationPage
   def state=(value)
     @state = value
 
+    adw_clamp.visible = true
     initial_state.visible = false
 
     case value
@@ -96,6 +97,17 @@ class StatusNavigationPage < Adwaita::NavigationPage
       clamp.maximum_size = 620
       clamp.tightening_threshold = 500
     end
+  end
+
+  # AdwStatusPage's own built-in icon/title/description content, reached by
+  # walking its internal widget tree exactly as upstream's __init__ does
+  # ("Hack to get to AdwClamp, so it can be hidden for the initial state").
+  # status_page.child= installs initial_state as a second, custom child
+  # alongside this one rather than replacing it — status_page itself stays
+  # visible the whole time, which is why #set_empty_state toggles this and
+  # initial_state against each other instead of hiding status_page.
+  def adw_clamp
+    @adw_clamp ||= status_page.first_child.first_child.first_child.first_child
   end
 
   def initial_box
@@ -156,14 +168,13 @@ class StatusNavigationPage < Adwaita::NavigationPage
     end
 
     def set_empty_state
-      status_page.visible = false
+      adw_clamp.visible = false
       initial_state.visible = true
       description_label.label = content_text
     end
 
     def set_search_state
       status_page.tap do |page|
-        page.visible = true
         page.title = 'No Music Found'
         page.description = 'Try a Different Search'
       end
@@ -171,7 +182,6 @@ class StatusNavigationPage < Adwaita::NavigationPage
 
     def set_no_tracker_state
       status_page.tap do |page|
-        page.visible = true
         page.title = 'GNOME Music could not connect to Tracker.'
         page.description = 'Your music files cannot be indexed without Tracker running.'
         page.icon_name = 'dialog-error-symbolic'
@@ -180,7 +190,6 @@ class StatusNavigationPage < Adwaita::NavigationPage
 
     def set_tracker_outdated_state
       status_page.tap do |page|
-        page.visible = true
         page.title = 'Your system Tracker version seems outdated.'
         page.description = 'Music needs Tracker version 3.0.0 or higher.'
         page.icon_name = 'dialog-error-symbolic'

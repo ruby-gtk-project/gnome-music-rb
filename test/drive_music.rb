@@ -383,6 +383,195 @@ GtkDriver.drive(app, shots: SHOTS, interval: 1200, timeout: 90) do |d, applicati
     d.shot('13-player-visible')
     window.set_player_visible(false)
   end
+
+  # --- Components the run above never reached -----------------------------
+  #
+  # Everything below closes the gap between "the port has a file for this"
+  # and "this was run once": the smart-playlist catalogue, the status page's
+  # error states (upstream only reaches these when Tracker itself fails),
+  # the loading indicator, window placement persistence and the two small
+  # player-toolbar widgets (volume scale, two-line tooltip) nothing above
+  # drove directly.
+
+  d.step('the smart playlist catalogue matches upstream\'s seven') do
+    coremodel = application.coremodel
+    # Earlier steps created and staged a user playlist ("Drive Test"), which
+    # leaves the model one entry short of the raw smart-playlist count once
+    # it is staged out, so this counts the smart ones by #smart? rather than
+    # asserting a fixed total.
+    all = (0...coremodel.playlists_model.n_items).map { |i| coremodel.playlists_model[i] }
+    smart = all.select(&:smart?)
+    d.check('seven smart playlists are registered') { smart.length == 7 }
+    titles = smart.map(&:title)
+    d.check('upstream\'s titles are all present') do
+      [
+        'Most Played', 'Never Played', 'Recently Played', 'Recently Added',
+        'Starred Songs', 'Insufficiently Tagged', 'All Songs',
+      ].all? { |title| titles.include?(title) }
+    end
+    starred = smart.find { |pl| pl.title == 'Starred Songs' }
+    d.check('Starred Songs is smart') { starred.smart? }
+    d.check('it picks up every favorited fixture song') do
+      starred.update
+      # s3 starts favorited in the fixture; the earlier "add to favorites"
+      # step favorited every song on the "First" album (s1, s2) too, so all
+      # three are starred by the time this step runs.
+      starred.songs.map(&:id).sort == %w[s1 s2 s3]
+    end
+    most_played = smart.find { |pl| pl.title == 'Most Played' }
+    d.check('Most Played orders by play count, descending') do
+      most_played.update
+      most_played.songs.map(&:id) == ['s3', 's1']
+    end
+  end
+
+  d.step('the window\'s own status page carries upstream\'s three error states') do
+    window = application.window
+    page = window.status_navigation_page
+
+    # Navigates to the real, already-built status page (added at window
+    # build time, tag "status") rather than a freestanding copy, so the
+    # visibility this checks is the window's real realized widget tree, not
+    # an orphaned page nothing has ever shown.
+    window.navigation_view.replace_with_tags(['status'])
+    pump
+    d.check('the status page is the one now showing') do
+      window.navigation_view.visible_page.equal?(page)
+    end
+
+    d.check('EMPTY shows the welcome clamp, not AdwStatusPage\'s own icon/title') do
+      page.state = StatusNavigationPage::EMPTY
+      pump
+      page.initial_state.visible? && !page.adw_clamp.visible?
+    end
+    d.check('SEARCH shows the built-in clamp again, with upstream\'s own two lines') do
+      page.state = StatusNavigationPage::SEARCH
+      pump
+      page.adw_clamp.visible? && !page.initial_state.visible? &&
+        page.status_page.title == 'No Music Found' &&
+        page.status_page.description == 'Try a Different Search'
+    end
+    d.check('NO_TRACKER names Tracker and shows the error icon') do
+      page.state = StatusNavigationPage::NO_TRACKER
+      page.status_page.title == 'GNOME Music could not connect to Tracker.' &&
+        page.status_page.icon_name == 'dialog-error-symbolic'
+    end
+    d.check('TRACKER_OUTDATED names the version it needs') do
+      page.state = StatusNavigationPage::TRACKER_OUTDATED
+      page.status_page.description == 'Music needs Tracker version 3.0.0 or higher.'
+    end
+    sleep(0.3)
+    pump(60)
+    d.shot('14-status-no-tracker', window)
+
+    # Leave it as the window itself would: EMPTY, then back to the real
+    # collection view so the steps below find the window as they expect it.
+    page.state = StatusNavigationPage::EMPTY
+    window.navigation_view.replace_with_tags(['mainview'])
+    pump
+  end
+
+  d.step('the notification manager drives the window\'s progress bar') do
+    window = application.window
+    manager = NotificationManager.new(window: window)
+
+    d.check('the progress bar starts hidden') { !window.loading_progress.visible? }
+    manager.push_loading
+    d.check('one in-flight load shows it') { window.loading_progress.visible? }
+    manager.push_loading
+    manager.pop_loading
+    d.check('a second push keeps it up until both pop') { window.loading_progress.visible? }
+    manager.pop_loading
+    d.check('the last pop hides it again') { !window.loading_progress.visible? }
+
+    d.check('#loading wraps push/pop around a block') do
+      ran = false
+      manager.loading { ran = window.loading_progress.visible? }
+      ran && !window.loading_progress.visible?
+    end
+  end
+
+  d.step('window placement restores a saved size on a fresh window') do
+    settings = application.settings
+    settings['window-size'] = [742, 511]
+    settings['window-maximized'] = false
+
+    fresh = Gtk::ApplicationWindow.new(application.app)
+    WindowPlacement.new(fresh, settings).build
+    d.check('the saved size came back as the default size') do
+      [fresh.default_width, fresh.default_height] == [742, 511]
+    end
+    fresh.destroy
+  end
+
+  d.step('resizing the real window arms a coalesced write back to settings') do
+    window = application.window
+    before = application.settings['window-size']
+
+    # A real property change, not a hand-forged "notify" emission (which
+    # needs a live GParamSpec and is not what WindowPlacement's own
+    # #on_size_change ever receives) — set_default_size is what a real
+    # resize does, and it fires notify::default-width/-height itself.
+    window.set_default_size(window.default_width + 7, window.default_height + 5)
+    pump(5)
+    sleep(WindowPlacement::STORE_DELAY / 1000.0 + 0.2)
+    pump(10)
+    d.check('the debounced write landed with the window\'s real size') do
+      application.settings['window-size'] == [window.width, window.height]
+    end
+    application.settings['window-size'] = before
+  end
+
+  d.step('the volume button\'s scale and tooltip render') do
+    volume_button = application.window.player_toolbar.volume_button
+
+    d.check('the scale is a Gtk::Scale on a 0..1 cubic range') do
+      volume_button.scale.is_a?(Gtk::Scale) &&
+        volume_button.adjustment.lower == 0.0 && volume_button.adjustment.upper == 1.0
+    end
+    volume_button.volume = 0.5
+    d.check('setting volume moves the adjustment') { volume_button.adjustment.value > 0 }
+    pump
+    d.shot('15-volume-popover')
+  end
+
+  d.step('a two-line tip carries a title and an optional subtitle') do
+    TwoLineTip.new.build.then do |tip|
+      tip.title = 'Recently Added'
+      tip.subtitle = 'a week ago'
+      d.check('the title round-trips') { tip.title == 'Recently Added' }
+      d.check('the subtitle round-trips') { tip.subtitle == 'a week ago' }
+      tip.subtitle_visible = false
+      d.check('hiding the subtitle hides its label') { !tip.subtitle_label.visible? }
+    end
+  end
+
+  d.step('the playlist toast actually undoes the delete it offers') do
+    coremodel = application.coremodel
+
+    playlist = application.playlists.create('Undo Me')
+    coremodel.set_playlists(application.playlists.playlists)
+    coremodel.refresh_user_playlists
+    before_count = coremodel.playlists_model.n_items
+
+    # #build stages the deletion and adds itself to the window's toast
+    # overlay, exactly as upstream's playlisttoast.py does on construction.
+    PlaylistToast.new(application, playlist).build.then do |toast|
+      d.check('staging the deletion removed it from the model') do
+        coremodel.playlists_model.n_items == before_count - 1
+      end
+      toast.toast.signal_emit('button-clicked')
+      d.check('the undo button brings the playlist back') { coremodel.playlists_model.n_items == before_count }
+    end
+
+    # And the other half: dismissing without undo commits the deletion.
+    PlaylistToast.new(application, playlist).build.then do |toast|
+      toast.toast.signal_emit('dismissed')
+      d.check('dismissing without undo commits the delete') do
+        coremodel.playlists_model.n_items == before_count - 1
+      end
+    end
+  end
 end
 
 # Known gap, not driven above: calling Player#play (win.playlist_play,
