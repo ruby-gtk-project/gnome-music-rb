@@ -20,13 +20,44 @@ This matters for how the rest of this report is read: "every upstream test
 is ported" is vacuously true here. It is **not** evidence that the port's
 own verification is adequate — that is a separate question, covered below.
 
-## The port's own verification: a suite that has never been run as a suite
+## The port's own verification: a suite that was never run, and could not have been
 
-`spec/` contains exactly two files: `spec_helper.rb` (loads the
-`kettle-test`/RSpec harness) and `README.md` (documents the harness's
-helper APIs). **Zero `*_spec.rb` files exist anywhere in the repository.**
-`bundle exec rspec` in this project would currently run zero examples. The
-RSpec scaffold is dead weight — wired up, documented, never used.
+`spec/` previously contained exactly two files: `spec_helper.rb` (loading
+the `kettle-test`/RSpec harness) and `README.md`. **Zero `*_spec.rb` files
+existed anywhere in the repository.** Worse, `spec_helper.rb` itself could
+not load inside this fork's own dev shell: it unconditionally required
+`"kettle/test/rspec"`, a gem the flake's `devShells.default` never
+provisions (it carries only bare `pkgs.rubyPackages_3_4.rspec`), and it
+required `"gnome/music/rb"`, a file that has never existed — the gemspec's
+own version file lives at `lib/gnome/music/rb/version.rb`, loaded with
+`Kernel.load`, not `require "gnome/music/rb"`. Running the exact command
+the dev shell's own banner printed (`ruby -e 'require "rspec/core"; ...'`)
+raised `LoadError: cannot load such file -- kettle/test/rspec` before a
+single example file was even read. The scaffold was not merely unused — it
+was unusable from the one shell this fork runs anything in.
+
+This pass fixes both defects in `spec/spec_helper.rb` (the `kettle-test`
+require now falls back to plain RSpec when the gem is absent, and the
+library require now points at the real version file) and adds
+`spec/utils_spec.rb`, `spec/core_song_spec.rb` and `spec/queue_spec.rb` —
+39 + 12 = 51 examples covering `Utils` (artist/title fallbacks, natural
+sort, `RepeatMode`, `Observable`), `CoreSong` (equality, hashing,
+notification on every mutator, `#duplicate`'s independence) and `PlayQueue`
+(next/previous under NONE, ALL and SONG repeat modes, `#set_song`,
+skipping a `FAILED` song, `#end`'s reset). Confirmed in this session with
+the dev shell's own printed spec command:
+
+```
+nix develop --command xvfb-run -a ruby -e 'require "rspec/core"; exit RSpec::Core::Runner.run(["--format", "progress", "--require", "spec_helper", "spec"])'
+# 51 examples, 0 failures
+```
+
+This is real RSpec coverage of pure port logic, run as a suite for the
+first time — not a claim that the harness is now complete. It does not
+reach any widget class (those still need `test/drive_*.rb`'s live GTK
+loop), and it does not reach playback, `core_grilo`, `local_search_wrapper`,
+`tracker_wrapper`, `mpris`, `store_art` or `embedded_art`, none of which
+exist yet to test.
 
 The actual verification artifact is three hand-written drive scripts under
 `test/` (`drive_smoke.rb`, `drive_artwork.rb`, `drive_music.rb`), sharing

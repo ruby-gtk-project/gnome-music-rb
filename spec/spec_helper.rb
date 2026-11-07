@@ -16,15 +16,36 @@ begin
   end
 rescue LoadError => error
   # check the error message and re-raise when unexpected
-  raise error unless error.message.include?("kettle")
+  unless error.message.include?("kettle")
+    raise error
+  end
 end
 
 # External RSpec & related config
-require "kettle/test/rspec"
-# `kettle/test/rspec` installs harness helpers documented in spec/README.md.
+#
+# The dev shell's own rspec (pkgs.rubyPackages_3_4.rspec in flake.nix) is a
+# bare RSpec with no kettle-test alongside it, so requiring kettle-test
+# unconditionally made this file — and therefore every spec — unloadable
+# inside `nix develop`, which is exactly why the suite had never been run.
+# Where kettle-test is available (the kettle-dev gemfiles this repo also
+# ships), it still installs the harness helpers documented in
+# spec/README.md; where it is not, the specs fall back to plain RSpec.
+begin
+  require "kettle/test/rspec"
+rescue LoadError => error
+  unless error.message.include?("kettle")
+    raise error
+  end
+end
 
 # This library
-require "gnome/music/rb"
+#
+# The gemspec computes its version by `Kernel.load`ing this file directly
+# rather than requiring it (see gnome-music-rb.gemspec), so there has never
+# been a lib/gnome/music/rb.rb for a plain `require "gnome/music/rb"` to
+# find — only lib/gnome/music/rb/version.rb. Requiring the version file by
+# its real path is what the kettle-jem scaffold meant to do here.
+require "gnome/music/rb/version"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

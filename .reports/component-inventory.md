@@ -16,26 +16,36 @@ component is **the pair of files**, and both halves map to one `lib/*.rb`.
 
 ## Current state of the port
 
-Refreshed after the second porting pass (`Port the cover-art pipeline and the
-suspend inhibitor`), which followed the first (`Port the application shell,
-core models, album/artist/playlist/search views and the player`). `lib/` on
-`ruby` now holds **67 files**; the scaffold `lib/gnome_music.rb` requires
+Refreshed after the third porting pass (`Wire the binding gems and port
+pause_on_suspend`), which followed the second (`Port the cover-art pipeline
+and the suspend inhibitor`) and the first (`Port the application shell, core
+models, album/artist/playlist/search views and the player`). `lib/` on
+`ruby` now holds **68 files**; the scaffold `lib/gnome_music.rb` requires
 `lib/main.rb`, which is the real `class App`, launched from
 `exe/gnome-music`.
 
+The `grilo`, `libmediaart`, `tsparql`, `gstreamer_pbutils` and `soup3` gems
+are now in the gemspec, the runtime Gemfile and the flake's typelib path, and
+all five load (confirmed with `require` + a constant count in the dev
+shell) — the "no Grilo/Tracker bindings in the dev shell" premise some of
+the component notes below were written under no longer holds. That removes
+the dependency blocker for `core_grilo`, `local_search_wrapper`,
+`tracker_wrapper`, `store_art` and `embedded_art`; none of the five is
+written yet, so they stay listed as missing, not as blocked.
+
 **Component status: 46 of 47 user-facing components are present; 1 is
-missing.** Of the 25 supporting (non-widget) modules, 17 are present and 8
-are missing — all of them in the Grilo/Tracker, remote-art and suspend
-clusters. The cover-art pipeline landed in the second porting pass, minus the
-two pieces that need absent dependencies: `embedded_art` (GStreamer's tag
-readers) and `store_art` (Grilo).
+missing.** Of the 25 supporting (non-widget) modules, 18 are present and 7
+are missing — all of them in the Grilo/Tracker, remote-art and MPRIS
+clusters. The cover-art pipeline landed in the second porting pass, minus
+the two pieces that need a data source the port does not have yet:
+`embedded_art` and `store_art`. `pause_on_suspend` landed in the third pass.
 
 | Status | Count | Which |
 |---|---:|---|
 | user-facing components present | 46 | every window, dialog, page, view, tile, row, menu, toast, header bar and playback control, plus the cover paintable |
 | user-facing components missing | 1 | `lib/disc_list_item.rb` |
-| supporting modules present | 17 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger`, `album_art`, `artist_art`, `song_art`, `media_art_loader`, `texture_cache`, `inhibit_suspend` (and `media_art`, which stands in for libmediaart) |
-| supporting modules missing | 8 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `store_art`, `embedded_art`, `pause_on_suspend` |
+| supporting modules present | 18 | `core_model`, `core_album`, `core_artist`, `core_disc`, `core_song`, `local_search_playlists`, `playlist`, `player`, `queue`, `gst_player`, `shuffle_list_model`, `music_logger`, `album_art`, `artist_art`, `song_art`, `media_art_loader`, `texture_cache`, `inhibit_suspend`, `pause_on_suspend` (and `media_art`, which stands in for libmediaart) |
+| supporting modules missing | 7 | `core_grilo`, `local_search_wrapper`, `tracker_wrapper`, `mpris`, `store_art`, `embedded_art` |
 
 Totals upstream: 33 `.ui` files under `data/ui/`, 68 Python modules under
 `gnomemusic/`, 1 GSettings schema, 1 stylesheet, 19 SPARQL queries, 74 `po/`
@@ -474,12 +484,12 @@ Not components, but the port needs equivalents before any view has data.
 | `gnomemusic/mpris.py` | `lib/mpris.rb` | MPRIS2 D-Bus interface | **no** |
 | `gnomemusic/albumart.py`, `artistart.py`, `songart.py`, `mediaartloader.py`, `texturecache.py` | `lib/album_art.rb`, `lib/artist_art.rb`, `lib/song_art.rb`, `lib/media_art_loader.rb`, `lib/texture_cache.rb` | cover-art pipeline | yes (all 5) |
 | (libmediaart, `MediaArt` 2.0 GIR) | `lib/media_art.rb` | the MediaArt cache path and the directory cover lookup that fills it, per the Media Art Storage Spec; no MediaArt typelib in the dev shell | yes |
-| `gnomemusic/storeart.py`, `embeddedart.py` | `lib/store_art.rb`, `lib/embedded_art.rb` | remote store art (needs Grilo); embedded art (needs `GstTag`/`GstPbutils`/`MediaArt`) | **no** (both) |
+| `gnomemusic/storeart.py`, `embeddedart.py` | `lib/store_art.rb`, `lib/embedded_art.rb` | remote store art (needs `core_grilo`, which does not exist yet); embedded art (needs the now-wired `GstTag`/`GstPbutils`/`MediaArt`, but not written yet) | **no** (both) |
 | `gnomemusic/inhibitsuspend.py` | `lib/inhibit_suspend.rb` | suspend inhibitor while playing | yes |
-| `gnomemusic/pauseonsuspend.py` | `lib/pause_on_suspend.rb` | logind `PrepareForSleep` delay lock | **no** |
+| `gnomemusic/pauseonsuspend.py` | `lib/pause_on_suspend.rb` | logind `PrepareForSleep` delay lock | yes |
 | `gnomemusic/musiclogger.py`, `asynciolimiter.py` | `lib/music_logger.rb`, (drop) | logging; the asyncio limiter is Python-specific plumbing | `music_logger` yes |
 | `data/queries/*.rq` (19 files) | `lib/queries/` or inline | SPARQL used by the localsearch wrapper | n/a |
-| `po/` (74 catalogues), `help/C/*.page` (10 pages) | translation / help parity steps | out of scope for this survey | n/a |
+| `po/` (74 catalogues), `help/C/*.page` (10 pages) | translation / help infrastructure | **not built** — zero translation markers, zero catalogues, zero help pages exist anywhere in the port | n/a |
 
 ---
 
@@ -508,8 +518,15 @@ Not components, but the port needs equivalents before any view has data.
 5. **GResource/GtkBuilder are not used by the port** by design, so the 31
    `.ui` trees must be re-expressed as memoized widget methods — the mapping
    above is the contract for that.
-6. **Translations.** 74 `po/` catalogues upstream; the port has no gettext
-   setup at all. Translation parity is a separate step.
+6. **Translations were not built.** 74 `po/` catalogues exist upstream; the
+   port has no gettext-equivalent marker anywhere in `lib/` or `exe/`, no
+   `.po`/`.pot`/`.mo` file anywhere in the repository, and no catalogue
+   infrastructure of any kind. This is not a scheduled later phase and not
+   "out of scope" by any decision this port gets to make — upstream shipped
+   74 languages, so upstream set the scope, and today's port ships English
+   only, with every user-visible string a bare literal that a future pass
+   would have to find and wrap by hand in all 68 `lib/*.rb` files, because
+   none of them carry a marker a wrapping step could search for.
 7. **Binding quirks to respect** (see `.claude/skills/ruby-gtk`):
    `Adwaita::Application` is broken, so app actions and accelerators go on
    `Gtk::Application`; `Adwaita::NavigationPage.new(child, title)` is
