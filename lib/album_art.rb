@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adwaita'
+require_relative 'embedded_art'
 require_relative 'media_art'
 require_relative 'music_logger'
 
@@ -12,14 +13,13 @@ require_relative 'music_logger'
 #
 # Upstream looks in three places in turn: the MediaArt cache, the album's own
 # files through EmbeddedArt, and a remote store through CoreGrilo. The first
-# two are here — the cache, and the cover file sitting in the album's
-# directory, which is the half of EmbeddedArt that does not need GStreamer's
-# tag readers. The remote store is not: it hangs off CoreGrilo, which needs
-# the Grilo bindings this fork's dev shell does not carry.
+# two are here. The remote store is not, because it hangs off CoreGrilo,
+# which needs a Tracker-backed Grilo source this port does not have yet.
 #
-# Upstream's five-per-second limiter is a asyncio rate limiter; here the
-# lookup is deferred to an idle callback, so a view that builds two hundred
-# covers at once never stats two hundred directories inside one frame.
+# Upstream's five-per-second limiter is an asyncio rate limiter; here the
+# cache lookup is deferred to an idle callback, so a view that builds two
+# hundred covers at once never stats two hundred cache paths inside one
+# frame, and EmbeddedArt's own directory scan is deferred the same way.
 class AlbumArt
   def initialize(corealbum, logger: nil)
     @corealbum = corealbum
@@ -44,18 +44,21 @@ class AlbumArt
         if uri
           @corealbum.thumbnail = uri
         else
-          from_directory
+          from_embedded_art
         end
       end
     end
 
-    def from_directory
-      MediaArt.store_cover_from_directory(@corealbum.url, @artist, @album).then do |uri|
-        if uri
-          @corealbum.thumbnail = uri
+    # Upstream retries the cache after EmbeddedArt reports success, since
+    # EmbeddedArt itself just wrote the file the cache lookup now finds.
+    def from_embedded_art
+      EmbeddedArt.new(logger: @log).tap do |embedded|
+        embedded.on_art_found do |found|
+          if found
+            in_cache
+          end
         end
+        embedded.query(@corealbum, @album)
       end
-    rescue StandardError => e
-      @log.warning("Error: #{e.class}, #{e.message} for album: #{@album} by artist: #{@artist}")
     end
 end

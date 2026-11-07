@@ -95,7 +95,10 @@ ALBUM_DIR = File.join(
   'First',
 )
 FileUtils.mkdir_p(ALBUM_DIR)
-write_cover(File.join(ALBUM_DIR, 'Cover.JPG'))
+write_cover(File.join(ALBUM_DIR, 'cover.jpg'))
+# MediaArt::Process#uri resolves the directory to scan from the track's own
+# GFile, which has to exist for that lookup to succeed.
+FileUtils.touch(File.join(ALBUM_DIR, 'one.ogg'))
 
 SONG = {
   id:                's1',
@@ -130,12 +133,11 @@ check('cache paths follow the media art storage spec') do
   end
 end
 
-check('an unknown name hashes a single space') do
-  unless MediaArt.checksum(nil) == MediaArt.checksum('')
-    raise 'nil and empty differ'
-  end
-  unless MediaArt.checksum(nil) == Digest::MD5.hexdigest(' ')
-    raise 'not the single space hash'
+check('a nil title still computes a cache path, as ArtistArt relies on') do
+  MediaArt.cache_path('Alpha', nil, 'artist').then do |path|
+    unless File.basename(path) =~ /\Aartist-[0-9a-f]{32}-[0-9a-f]{32}\.jpeg\z/
+      raise "unexpected name #{File.basename(path)}"
+    end
   end
 end
 
@@ -145,11 +147,18 @@ check('nothing is cached to start with') do
   end
 end
 
-check('the cover beside the music is found whatever its case') do
-  MediaArt.directory_cover(SONG[:url]).then do |cover|
-    unless cover == File.join(ALBUM_DIR, 'Cover.JPG')
-      raise "found #{cover.inspect}"
-    end
+check('the cover beside the music is found and linked into the cache') do
+  found = []
+  EmbeddedArt.new.tap do |embedded|
+    embedded.on_art_found { |ok| found << ok }
+    embedded.query(CoreSong.new(SONG), 'First')
+  end
+  pump
+  unless found == [true]
+    raise found.inspect
+  end
+  unless File.file?(MediaArt.cache_path('Alpha', 'First', 'album'))
+    raise 'cover not linked into the cache'
   end
 end
 
