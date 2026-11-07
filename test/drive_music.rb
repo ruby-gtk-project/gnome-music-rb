@@ -91,7 +91,21 @@ app = GnomeMusic::Application.new(
   settings: Settings.new(path: File.join(ROOT, 'settings.json')),
 )
 
-GtkDriver.drive(app, shots: SHOTS, interval: 1200, timeout: 90) do |d, application|
+# Under Xvfb's software (llvmpipe) rendering, AdwDialog/AdwToast open-close
+# transitions can take many real seconds per frame instead of the usual
+# fraction of a second, which starves this driver's own GLib::Timeout ticks
+# (lower priority than the frame clock) for just as long. Disabling
+# animations makes every transition instant, which is what every other
+# driver script in this fork's style relies on for headless determinism.
+Gtk::Settings.default.gtk_enable_animations = false
+
+#
+# The 600s budget (vs. GtkDriver's 120s default) is generous on purpose: on
+# a loaded box, 22 steps at a 1.2s tick can still take several real minutes
+# even with animations off, and the watchdog firing is a false failure, not
+# a sign anything in the port is actually wrong — every check it would have
+# reported already passed by the time it fires early.
+GtkDriver.drive(app, shots: SHOTS, interval: 1200, timeout: 600) do |d, application|
   d.window { application.window }
 
   d.step('window comes up empty') do
@@ -565,8 +579,16 @@ GtkDriver.drive(app, shots: SHOTS, interval: 1200, timeout: 90) do |d, applicati
     end
 
     # And the other half: dismissing without undo commits the deletion.
+    #
+    # #dismiss, not a hand-emitted 'dismissed' — that signal is the toast
+    # overlay's own notification that a dismissal already happened (by
+    # timeout, swipe or #dismiss), not a request to start one. Emitting it
+    # directly leaves the overlay's internal bookkeeping out of step with
+    # the signal it just saw, which segfaults inside libadwaita's own
+    # cleanup; #dismiss is the public call upstream's own close path uses.
     PlaylistToast.new(application, playlist).build.then do |toast|
-      toast.toast.signal_emit('dismissed')
+      toast.toast.dismiss
+      pump
       d.check('dismissing without undo commits the delete') do
         coremodel.playlists_model.n_items == before_count - 1
       end
