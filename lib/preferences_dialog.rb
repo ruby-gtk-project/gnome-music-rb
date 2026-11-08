@@ -5,12 +5,17 @@ require 'adwaita'
 # PreferencesDialog is the dialog behind the primary menu's Preferences item.
 #
 # A direct port of upstream's gnomemusic/widgets/preferencesdialog.py and
-# data/ui/PreferencesDialog.ui: the repeat mode and ReplayGain combo rows
-# under Player Settings, and the suspend inhibitor under Power Settings. Each
-# row reads and writes the same settings key upstream binds it to.
+# data/ui/PreferencesDialog.ui: the repeat mode combo row under Player
+# Settings, and the suspend inhibitor under Power Settings. Each row reads
+# and writes the same settings key upstream binds it to.
+#
+# Upstream's ReplayGain combo row is deliberately not ported here: as
+# gst_player.rb's class comment explains, Gtk::MediaFile (the only playback
+# backend this port can use, for lack of Ruby Gst bindings) has no hook to
+# insert the rgvolume/rglimiter filter ReplayGain needs, so a ReplayGain row
+# would be a control that stores a preference nothing ever reads.
 class PreferencesDialog < Adwaita::PreferencesDialog
   REPEAT_MODES = %w[None Song All Shuffle].freeze
-  REPLAY_GAIN_MODES = %w[Disabled Album Track].freeze
 
   def initialize(application)
     super()
@@ -29,18 +34,10 @@ class PreferencesDialog < Adwaita::PreferencesDialog
 
         player_group.tap do |group|
           group.add(repeat_mode_row)
-          group.add(replay_gain_row)
 
           repeat_mode_row.tap do |row|
             row.selected = @settings.enum('repeat')
             row.signal_connect('notify::selected') { @settings.set_enum('repeat', row.selected) }
-          end
-
-          replay_gain_row.tap do |row|
-            row.selected = @settings.enum('replaygain')
-            row.signal_connect('notify::selected') do
-              @settings.set_enum('replaygain', row.selected)
-            end
           end
         end
 
@@ -70,14 +67,6 @@ class PreferencesDialog < Adwaita::PreferencesDialog
     @repeat_mode_row ||= Adwaita::ComboRow.new.tap do |row|
       row.title = 'Repeat Mode'
       row.model = Gtk::StringList.new(REPEAT_MODES)
-    end
-  end
-
-  def replay_gain_row
-    @replay_gain_row ||= Adwaita::ComboRow.new.tap do |row|
-      row.title = 'ReplayGain'
-      row.subtitle = 'Balance loudness between songs if ReplayGain metadata is found'
-      row.model = Gtk::StringList.new(REPLAY_GAIN_MODES)
     end
   end
 

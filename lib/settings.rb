@@ -5,8 +5,12 @@ require 'json'
 require 'fileutils'
 
 # Settings holds the same keys as upstream's org.gnome.Music GSettings schema
-# (data/org.gnome.Music.gschema.xml): the window geometry, the repeat mode,
-# the ReplayGain mode and the suspend inhibitor.
+# (data/org.gnome.Music.gschema.xml): the window geometry, the repeat mode
+# and the suspend inhibitor.
+#
+# Upstream's `replaygain` key is deliberately not carried here: see
+# preferences_dialog.rb's class comment for why this port has no control
+# that would ever read it.
 #
 # Upstream uses GSettings, which needs a compiled schema installed into the
 # system's glib-2.0/schemas directory. Requiring an install step to run the
@@ -19,19 +23,16 @@ require 'fileutils'
 # get_enum/set_enum, and #on_change replaces the "changed::key" signal.
 class Settings
   REPEAT_MODES = %w[none song all shuffle].freeze
-  REPLAY_GAIN_MODES = %w[disabled album track].freeze
 
   DEFAULTS = {
     'window-size'      => [768, 600],
     'window-maximized' => true,
     'repeat'           => 'none',
-    'replaygain'       => 'disabled',
     'inhibit-suspend'  => false,
   }.freeze
 
   ENUMS = {
-    'repeat'     => REPEAT_MODES,
-    'replaygain' => REPLAY_GAIN_MODES,
+    'repeat' => REPEAT_MODES,
   }.freeze
 
   def initialize(path: nil)

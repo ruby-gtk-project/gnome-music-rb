@@ -26,11 +26,16 @@ end
 # Two pieces of upstream's pipeline have no equivalent in the GTK media API
 # and are therefore not here: ReplayGain, which upstream inserts as an
 # rgvolume/rglimiter filter bin, and the "about to finish" callback it uses
-# for gapless playback. The ReplayGain preference is still stored, and the
-# player advances on end of stream instead of pre-loading the next song.
-# Missing-codec installation, which upstream drives through PackageKit, is
-# likewise out: a stream that cannot be decoded reports an error, which is
-# what marks the song as failed.
+# for gapless playback. Gtk::MediaFile exposes no hook to insert a filter
+# into its pipeline or to pre-load the next stream before the current one
+# ends, and there are no Ruby Gst bindings to build a playbin3 pipeline by
+# hand instead, so both are genuinely infeasible here: the player advances
+# on end of stream instead of pre-loading the next song, and (since a
+# preference that nothing reads is worse than no preference at all)
+# settings.rb carries no ReplayGain key and preferences_dialog.rb has no
+# ReplayGain row. Missing-codec installation, which upstream drives through
+# PackageKit, is likewise out: a stream that cannot be decoded reports an
+# error, which is what marks the song as failed.
 class GstPlayer
   CLOCK_INTERVAL = 1000
 
