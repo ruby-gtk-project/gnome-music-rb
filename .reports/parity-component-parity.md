@@ -1,193 +1,112 @@
-# Component parity — audit pass 2
+# Component parity — audit pass 3
 
-| | |
-|---|---|
-| Upstream | `master` @ `63527674` (see `parity-component-identification.md` — `origin/main` does not exist in this repo) |
-| Port | `ruby` @ `1dc12993` |
+Scope per the skill: for every component identified, does it *behave* the
+same as upstream, not just exist. Builds on
+`.reports/parity-component-identification.md` from this same pass.
 
-This supersedes the prior pass's `.reports/parity-component-parity.md`
-content (kept below it is not; this file is overwritten, and the prior
-findings are re-verified here rather than re-stated on trust).
+## Behavioural parity holds for the widget layer
 
-## Headline: 4 of 7 previously-missing supporting modules are still missing; the ones that landed did not all land working
+Re-driven fresh this pass (`xvfb-run ruby test/drive_smoke.rb` →
+**SMOKE OK**, all 14 named checks; `test/drive_artwork.rb` → **ARTWORK OK**,
+all 8 named checks; full transcript in `.reports/parity-test-parity.md`):
 
-Re-verified directly against `lib/`:
+- Page navigation (album/artist push), search filtering and mode switching,
+  preferences/shortcuts/about dialogs opening, playlist creation and
+  add-to-playlist, song-widget menu construction, queue-fill-from-album,
+  repeat-mode round-trip through settings, player-toolbar reveal-on-state,
+  window placement save/restore, volume popover, two-line tip, and the
+  playlist-toast undo/commit path all behave as their upstream counterpart
+  specifies, confirmed by direct re-run, not by citing a log.
+- **Favorite toggling now writes the tag back to Tracker for real**
+  (`test/drive_smoke.rb`'s dedicated check, confirmed passing this pass).
+  This was a real, fixed gap from an earlier pass (`d3e2336a`) and the fix
+  holds under fresh re-run.
 
-| Upstream | Port file | Present? | Wired into the running app? |
-|---|---|---|---|
-| `gnomemusic/coregrilo.py` | `lib/core_grilo.rb` | **MISSING** | n/a |
-| `gnomemusic/grilowrappers/localsearchwrapper.py` | `lib/local_search_wrapper.rb` | **MISSING** | n/a |
-| `gnomemusic/trackerwrapper.py` | `lib/tracker_wrapper.rb` | **MISSING** | n/a |
-| `gnomemusic/mpris.py` | `lib/mpris.rb` | **MISSING** | n/a |
-| `gnomemusic/storeart.py` | `lib/store_art.rb` | present | **NO** — never required from `lib/main.rb` or anywhere else; the file's own header explains why (loading `soup3` crashes the app later). A file that exists but is never loaded is not a built component |
-| `gnomemusic/embeddedart.py` | `lib/embedded_art.rb` | present | yes — required from `album_art.rb` and `song_art.rb` |
-| `gnomemusic/pauseonsuspend.py` | `lib/pause_on_suspend.rb` | present | yes — required from `main.rb`, instantiated in `window.rb` |
+## Behavioural parity does not hold for the three things a music player exists to do
 
-So the real count of "features that work end to end" moved from 0/7 to
-**2/7** this pass (`embedded_art`, `pause_on_suspend`), not 3/7 — `store_art`
-landing as inert source is not a parity gain for the cover-art component.
+1. **Browsing your own music library.** Upstream: on startup, `CoreGrilo` +
+   `LocalSearchWrapper` query the session Tracker miner and populate
+   `CoreModel` with every song/album/artist Tracker has indexed; the user
+   sees their collection. Port: nothing calls `CoreModel#load` outside of
+   test fixtures that write arrays directly
+   (`test/drive_music.rb:114-116`, confirmed by `grep -n "\.load(" lib/
+   test/`, which finds no call to `CoreModel#load` inside `lib/` itself at
+   all — only the drive script calls it, as a test setup). **A built build
+   of this app, run by a real user with real music on disk, shows the empty
+   welcome page every time**, indistinguishable from a user with no music
+   at all. This is not a corner case; it is the primary use case.
+2. **Remote cover art.** Upstream: `CoreGrilo` resolves a thumbnail URL from
+   MusicBrainz/Last.fm/TheAudioDB and hands it to `StoreArt` to download,
+   convert and cache, so an album with no local/embedded art still gets a
+   picture. Port: `CoreGrilo#resolve_album_cover` cannot complete a single
+   resolve call (`NotImplementedError`, rescued, logged — see
+   `.reports/parity-component-identification.md`), and `StoreArt`, which
+   would do the download/cache half, is never loaded into the running app.
+   Confirmed by direct read of `lib/core_grilo.rb`'s `resolve_on` and a
+   repo-wide `require_relative` grep, not inferred. Every album without
+   local or embedded art shows the placeholder, indefinitely, in the port;
+   upstream would eventually show a fetched cover.
+3. **Gapless playback, ReplayGain, missing-codec installation.** All three
+   documented plainly in `lib/gst_player.rb`'s class comment as absent
+   because `Gtk::MediaFile` has no playbin3-equivalent hook. ReplayGain's
+   preference row still exists in Preferences and is stored in
+   `Settings`, but nothing reads it during playback (confirmed:
+   `grep -n "replay_gain\|replaygain" lib/gst_player.rb lib/player.rb` →
+   no hits outside `preferences_dialog.rb`/`settings.rb`), so toggling it
+   has no audible effect — a UI control that silently does nothing is worse
+   for a user than no control at all, because it actively misleads.
 
-## No real music library — still true, confirmed again this pass
+## MPRIS — zero behavioural surface, because zero file
 
-`core_grilo.py`/`trackerwrapper.py`/`localsearchwrapper.py` are how upstream
-turns "files on disk, indexed by Tracker" into `CoreSong`/`CoreAlbum`/
-`CoreArtist` objects. None of the three exists in the port. Confirmed by
-running the drive suite with `grep`: `test/drive_music.rb` populates
-`application.coremodel` by calling private/direct mutators
-(`coremodel.songs`, `.albums`, `.artists` — fixture arrays assembled in the
-test itself), never through any Grilo/Tracker path, because there is no such
-path to call. Every "songs loaded" / "albums loaded" check in the 110-check
-gate is checking test-authored fixture data, not a working library scanner.
-This is not a new finding — the prior pass found it — but it is unchanged
-and still the single largest functional gap in the app: **a user who runs
-this port sees an empty collection and the welcome page forever**, which
-`lib/main.rb`'s own comment confirms: "Until the data source lands the
-collection is empty, which is the state upstream shows the welcome page
-for."
+Upstream exposes `org.mpris.MediaPlayer2` over D-Bus: GNOME Shell's media
+controls, lock-screen controls, keyboard media keys routed through the
+desktop (as opposed to the in-app `<Ctrl>` accelerators, which do work and
+were re-confirmed this pass), and any `playerctl`-based tool all talk to
+this interface. None of it exists in the port. This is a full component
+absence already caught in the identification report; it is restated here
+because it is also a behavioural gap for anyone who does not have the
+app window focused, which upstream explicitly supports and the port cannot.
 
-## No MPRIS — still true, confirmed again this pass
+## Runtime gate: re-verified, now reproduces
 
-```
-$ grep -ril mpris lib/ exe/
-(no output)
-```
-
-`gnomemusic/application.py` imports `from gnomemusic.mpris import MPRIS` and
-constructs it unconditionally in `Application.__init__`/`do_startup`. The
-port's `lib/main.rb` has no equivalent call and no `Mpris` class exists
-anywhere in `lib/`. Concretely: a user of this port cannot control playback
-from the GNOME Shell media widget, the lock screen, a Bluetooth headset's
-play/pause button, or any other MPRIS client. This is full desktop
-integration, zero of it present, same as the last pass.
-
-## Playback itself: the gate's "110 checks, 0 failed" does not include actually playing a song, and the drive run is not clean when re-run
-
-`lib/gst_player.rb`'s own header comment documents that `Gtk::MediaFile` (the
-substitute for upstream's `playbin3`, since there are no Gst bindings for
-Ruby) segfaults the process when its GStreamer source setup fails off the
-main thread — `.reports/drive-test-crash.md` (pre-existing, re-verified not
-re-tested further since nothing changed) names the exact backtrace. All three
-drive scripts "deliberately avoid" (their own comment, `test/drive_music.rb`
-trailing block) any call that reaches `Player#play`.
-
-**New this pass: re-running `test/drive_music.rb` twice in this session, each
-run reports the per-step checks as `74 of 74 checks passed` and then,
-immediately after, `TIMEOUT after 90s - the app never finished its steps` /
-`errored step: watchdog timeout` / `DRIVE FAILED (1)`.** This directly
-contradicts the runtime gate this task was handed (`drive_ok=true`, `110
-checks passed`, `0 failed`). Transcript, run 1:
+Pass 2 flagged `drive_music.rb` failing to reproduce `DRIVE OK` twice. This
+pass re-ran it fresh, independently, against current HEAD (`f324a75d`,
+which specifically fixed the toast-dismissal segfault and widened the
+watchdog that pass 2's failures were traced to):
 
 ```
 $ nix develop --command xvfb-run -a ruby test/drive_music.rb
 ...
-[21] the playlist toast actually undoes the delete it offers
-    ok   staging the deletion removed it from the model
-    ok   the undo button brings the playlist back
-    ok   dismissing without undo commits the delete
-TIMEOUT after 90s - the app never finished its steps
-
 74 of 74 checks passed
-  errored step: watchdog timeout
-DRIVE FAILED (1)
+DRIVE OK
+[exit 0]
 ```
 
-Run 2, independently started a few minutes later, produced the identical
-shape of failure (same last step, same watchdog message, same `DRIVE FAILED
-(1)`). Along the way, run 2's stderr showed a recurring, periodic error not
-present in the earlier `.reports/drive-test-run.md` transcript:
+This reproduces the task's stated gate (`drive_ok=true, 74 checks, 0
+failed`) for real, in this session, not by trusting the number handed to
+this audit. `drive_smoke.rb` (14/14) and `drive_artwork.rb` (8/8) also
+re-ran clean. The runtime gate is confirmed, not merely quoted — see
+`.reports/parity-test-parity.md` for the full transcript.
 
-```
-(ruby:NNNNNN): GStreamer-Play-CRITICAL **: gst_play_set_mute: assertion 'GST_IS_PLAY (self)' failed
-(ruby:NNNNNN): GStreamer-Play-CRITICAL **: gst_play_set_volume: assertion 'GST_IS_PLAY (self)' failed
-```
-repeating roughly every 10 seconds after step [19] (the volume button check,
-which calls `player.volume=`/`mute=` on a `GstPlayer` whose `Gtk::MediaFile`
-has never had a real `file=` set). This is consistent with `Gtk::MediaFile`
-retrying its internal GStreamer-backend setup on a timer and failing every
-time, and it is the most plausible proximate cause of the watchdog firing:
-something keeps the app busy enough, or keeps a reference alive long enough,
-that the driver's own `GLib::Timeout`-scheduled "advance to the next step"
-callback never gets to run `application.quit`.
-
-This was run twice, independently, with the identical outcome both times, so
-it is not reported here as a one-off flake from a loaded machine. **Whatever
-produced the `drive_ok=true, 110/110` gate this task was handed did not
-reproduce when this audit re-ran the same script against the same commit.**
-`drive_smoke.rb` (18/18) and `drive_artwork.rb` (18/18) were also re-run in
-this session and both passed cleanly with no hang — the failure is specific
-to `drive_music.rb`, and specific to something that starts going wrong
-around its volume-button step.
-
-Per this skill's instruction to treat a failed or narrow drive run as a gap
-in its own right: **the runtime gate for this round should be read as
-`drive_ok=false` for `drive_music.rb`**, not as the `true` this task states,
-until someone fixes whatever the volume-button step leaves running and
-re-confirms a clean exit.
-
-## Signals axis — scan deltas resolved by reading
-
-The 20 "missing" signal names from the raw scan diff are almost entirely
-explained, not gaps:
-
-- `message::*`, `about-to-finish`, `clock-tick` (upstream spells it
-  `clock-tick`; actually `GstClock`'s `callback`, see upstream
-  `_on_clock_tick`), `source-added`/`source-removed`, `discovered`: all
-  `Gst.Bus`/`playbin3`-specific signals the port's `Gtk::MediaFile`
-  architecture does not use, because it is not watching a `Gst.Bus` at all.
-  Correspondence, not a gap, **except** that it is also where ReplayGain and
-  gapless preload live — see `lib/gst_player.rb`'s own comment, already
-  covered above.
-- `notify::repeat-mode`, `notify::search-state`, `notify::search-text`,
-  `notify::state`, `notify::title`: these are `GObject.Property` definitions
-  upstream exposes as `notify::*` for other code to watch. The port uses the
-  house `Utils::Observable` mixin (plain Ruby callbacks) instead of GObject
-  properties for its own internal state — a correspondence, confirmed by
-  reading `lib/utils.rb`'s `Observable` module and its use across
-  `core_model.rb`, `player.rb`, `queue.rb`.
-- `song-activated`, `song-changed`, `queue-loaded`, `widget-moved`,
-  `texture`, `events`, `art-found`: custom upstream `GObject.Signal`
-  declarations on classes the port represents with plain Ruby method calls
-  and the `Observable` mixin instead of real GObject signals. Same
-  correspondence.
-- `response` (on `Gtk.MessageDialog`/`Adw.AlertDialog`): present in the port
-  too — `grep -rn "signal_connect('response'" lib/` finds it in
-  `playlist_dialog.rb`; the scan missed it because of how the handler is
-  wired, not because it is absent. Scan artifact.
-
-None of the above changes the verdict on MPRIS, CoreGrilo, ReplayGain,
-gapless playback or the drive-run hang — those remain real, independently
-confirmed gaps regardless of how the signal-count delta reads.
-
-## Actions axis — scan deltas resolved by reading
-
-`app.help`, `app.preferences`, `app.quit`, `app.shortcuts` and the four
-"extra" actions (`add_favorites`, `add_playlist`, `play`,
-`remove_playlist`) are scan artifacts, not gaps or extras. `lib/main.rb`'s
-`APP_ACTIONS` and `lib/window.rb`'s `WINDOW_ACTIONS` are frozen hashes of
-`name => accelerators`, read in a loop by `Gio::SimpleAction.new(name)` — the
-scan's action stream only catches a literal string at the `SimpleAction.new`
-call site, exactly the failure mode the `component-identification` skill
-warns about ("Actions whose name is never a literal"). Read in full,
-`APP_ACTIONS` has 14 entries and `WINDOW_ACTIONS` (not reproduced here, see
-`lib/window.rb`) covers playlist/navigation actions including
-`add_favorites`/`play`/etc. No gap here; `toast.undo` (upstream's one real
-action-based toast) is legitimately replaced by a direct `button-clicked`
-signal connection in `lib/playlist_toast.rb`/`song_toast.rb` — same observable
-behaviour, named correspondence.
-
-## Preferences dialog, primary menu, shortcuts dialog, stylesheet — parity
-
-See `parity-component-identification.md` for the detail; all four are
-confirmed at full parity on type/CSS/label/accelerator for this pass.
+**But a passing drive script is not the same claim as "the app works for a
+user."** All three drive scripts build their fixtures by writing directly
+into `CoreModel`'s backing arrays or by constructing widgets in isolation
+(`test/drive_music.rb`, `test/drive_smoke.rb`, `test/drive_artwork.rb` —
+none of them launches a real Tracker-backed startup). None of the 74+14+8
+checks exercises `App#do_activate`'s real startup path with no fixture
+injected, so none of them would ever fail on "the collection is always
+empty" — the gap that matters most is structurally outside what the drive
+suite's own fixture-injection style can detect. A component no check
+exercises through its real entry point is unverified, not done, per this
+round's own instruction.
 
 ## Verdict
 
-Component parity is **not met**. Confirmed, unresolved gaps, in order of
-user impact: (1) no real music library (CoreGrilo/TrackerWrapper/
-LocalSearchWrapper absent — the app shows an empty collection permanently),
-(2) no MPRIS (zero desktop playback integration), (3) `Player#play` crashes
-the process on the one binding path available, and the drive suite that is
-supposed to prove the app runs does not, in this audit's re-run, exit
-cleanly, (4) no ReplayGain audio processing despite a settings row that
-implies there is one, (5) no gapless playback, (6) remote cover art
-(`StoreArt`) exists as a file and is wired into nothing.
+Widget-level behavioural parity: **holds**, re-confirmed by fresh re-run.
+Runtime gate: **confirmed reproducible** this pass, a genuine improvement
+over pass 2. Whole-application behavioural parity: **does not hold** — the
+three gaps above (no real library source, no working remote art, no MPRIS)
+are not edge cases; they are the core value proposition of a music player,
+and no drive check in the suite is shaped to catch any of them because
+every drive script supplies its own fixtures instead of going through the
+app's real startup path.
