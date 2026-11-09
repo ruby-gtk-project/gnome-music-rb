@@ -96,37 +96,14 @@ Gem::Specification.new do |spec|
   spec.executables = ["gnome-music"]
   spec.require_paths = ["lib"]
 
-  # Runtime dependencies. This gemspec had none at all, which is true of 78 of
-  # the 90 forks: the app's gems were declared only in nix/Gemfile, so
-  # `gem install` produced something that could not load its own toolkit.
-  spec.add_dependency("gem_kit", "~> 0.2")
-  spec.add_dependency("gtk4", "~> 4.3")
   spec.add_dependency("adwaita", "~> 4.3")
+  spec.add_dependency("gem_kit", "~> 0.2")
   spec.add_dependency("glib2", "~> 4.3")
-
-  # The GObject Introspection bindings this app needs.
-  # Grl resolves remote album covers (lib/core_grilo.rb), MediaArt finds and
-  # caches album art, Tsparql is the local Tracker store favorites and other
-  # tags are written back to (lib/tracker_store.rb), Soup fetches (lib/store_art.rb).
-  #
-  # `gstreamer_pbutils` was declared here but nothing under lib/ ever
-  # requires it: it would only have served reading embedded cover art out of
-  # a track's GstTag::TAG_IMAGE sample (see lib/embedded_art.rb's class
-  # comment), and that gem does not expose the core Gst module
-  # (Gst::Buffer#map, Gst::MapFlags) that step needs, so that half of
-  # EmbeddedArt was never implemented and the gem was never loaded. Dropped
-  # rather than kept as a decorative dependency.
-  #
-  # Each remaining one is a loader over one typelib, so it also needs that
-  # typelib present at runtime. flake.nix carries them for the dev shell; a
-  # packaged app needs the distribution's equivalents, which each gem's
-  # README names. grilo also needs its plugin shared libraries
-  # (grl-tracker3, grl-lua-factory) found through GRL_PLUGIN_PATH, which is
-  # not a typelib concern; flake.nix's grlPluginPath carries that.
   spec.add_dependency("grilo", "~> 1.0")
+  spec.add_dependency("gtk4", "~> 4.3")
   spec.add_dependency("libmediaart", "~> 1.0")
-  spec.add_dependency("tsparql", "~> 1.0")
   spec.add_dependency("soup3", "~> 1.0")
+  spec.add_dependency("tsparql", "~> 1.0")
 
   # NOTE: It is preferable to list development dependencies in the gemspec due to increased
   #       visibility and discoverability.

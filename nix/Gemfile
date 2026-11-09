@@ -9,8 +9,9 @@
 source "https://rubygems.org"
 
 gem "adwaita"
-gem "gtk4"
+gem "glib2"
 gem "grilo"
+gem "gtk4"
 gem "libmediaart"
-gem "tsparql"
 gem "soup3"
+gem "tsparql"
